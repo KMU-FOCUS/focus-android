@@ -3,6 +3,8 @@ package com.kmu_focus.focusandroid.feature.auth.di
 import com.kmu_focus.focusandroid.feature.auth.data.remote.AuthApi
 import com.kmu_focus.focusandroid.feature.auth.data.repository.KakaoAuthRepositoryImpl
 import com.kmu_focus.focusandroid.feature.auth.data.repository.ServerAuthRepositoryImpl
+import com.kmu_focus.focusandroid.feature.auth.data.session.SessionExpiredHandlerImpl
+import com.kmu_focus.focusandroid.core.network.domain.SessionExpiredHandler
 import com.kmu_focus.focusandroid.feature.auth.domain.repository.KakaoAuthRepository
 import com.kmu_focus.focusandroid.feature.auth.domain.repository.ServerAuthRepository
 import dagger.Binds
@@ -29,6 +31,12 @@ abstract class AuthModule {
     abstract fun bindServerAuthRepository(
         impl: ServerAuthRepositoryImpl,
     ): ServerAuthRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSessionExpiredHandler(
+        impl: SessionExpiredHandlerImpl,
+    ): SessionExpiredHandler
 
     companion object {
         @Provides

@@ -1,5 +1,6 @@
 package com.kmu_focus.focusandroid.core.network.data
 
+import com.kmu_focus.focusandroid.core.network.domain.SessionExpiredHandler
 import com.kmu_focus.focusandroid.core.network.domain.TokenStore
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,6 +14,7 @@ import okhttp3.Route
 class TokenAuthenticator @Inject constructor(
     private val tokenStore: TokenStore,
     private val tokenRefreshService: TokenRefreshService,
+    private val sessionExpiredHandler: SessionExpiredHandler,
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
@@ -21,11 +23,14 @@ class TokenAuthenticator @Inject constructor(
             return null
         }
         if (responseCount(response) >= MAX_RETRY_COUNT) {
+            sessionExpiredHandler.onSessionExpired()
             return null
         }
 
+        // OkHttp Authenticator는 suspend를 지원하지 않아 리프레시를 동기 브리지로 감싼다.
         val refreshed = runBlocking { tokenRefreshService.refresh() }
         if (!refreshed) {
+            sessionExpiredHandler.onSessionExpired()
             return null
         }
 
