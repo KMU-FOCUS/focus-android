@@ -19,6 +19,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kmu_focus.focusandroid.feature.auth.presentation.AuthScreen
+import com.kmu_focus.focusandroid.feature.auth.presentation.AuthSessionViewModel
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraScreen
 import com.kmu_focus.focusandroid.feature.video.presentation.main.MainScreen
 import com.kmu_focus.focusandroid.feature.video.presentation.videosave.VideoSaveViewModel
@@ -32,10 +34,27 @@ enum class AppMode {
 fun AppSelectionScreen(
     modifier: Modifier = Modifier,
 ) {
+    val authSessionViewModel: AuthSessionViewModel = hiltViewModel()
+    val isLoggedIn by authSessionViewModel.isLoggedIn.collectAsStateWithLifecycle()
+    var selectedMode by rememberSaveable { mutableStateOf<AppMode?>(null) }
+
+    LaunchedEffect(isLoggedIn) {
+        if (!isLoggedIn) {
+            selectedMode = null
+        }
+    }
+
+    if (!isLoggedIn) {
+        AuthScreen(
+            onLoginSuccess = { },
+            modifier = modifier.fillMaxSize(),
+        )
+        return
+    }
+
     val context = LocalContext.current
     val saveViewModel: VideoSaveViewModel = hiltViewModel()
     val saveUiState by saveViewModel.uiState.collectAsStateWithLifecycle()
-    var selectedMode by rememberSaveable { mutableStateOf<AppMode?>(null) }
 
     LaunchedEffect(saveUiState.savedFilePath, saveUiState.error) {
         val savedPath = saveUiState.savedFilePath
