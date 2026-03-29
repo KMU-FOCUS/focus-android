@@ -1,5 +1,6 @@
 package com.kmu_focus.focusandroid.core.network.di
 
+import com.kmu_focus.focusandroid.core.network.BuildConfig
 import com.kmu_focus.focusandroid.core.network.data.AuthInterceptor
 import com.kmu_focus.focusandroid.core.network.data.SharedPrefsTokenStore
 import com.kmu_focus.focusandroid.core.network.data.TokenAuthenticator
@@ -28,8 +29,6 @@ abstract class NetworkModule {
     ): TokenStore
 
     companion object {
-        private const val DEFAULT_BASE_URL = "https://example.com/"
-
         @Provides
         @Singleton
         fun provideTokenRefreshService(
@@ -38,7 +37,7 @@ abstract class NetworkModule {
         ): TokenRefreshService {
             return TokenRefreshService(
                 tokenStore = tokenStore,
-                baseUrl = DEFAULT_BASE_URL,
+                baseUrl = BuildConfig.SERVER_BASE_URL,
                 okHttpClient = refreshOkHttpClient,
             )
         }
@@ -82,7 +81,7 @@ abstract class NetworkModule {
             okHttpClient: OkHttpClient,
         ): Retrofit {
             return Retrofit.Builder()
-                .baseUrl(DEFAULT_BASE_URL)
+                .baseUrl(BuildConfig.SERVER_BASE_URL)
                 .client(okHttpClient)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()

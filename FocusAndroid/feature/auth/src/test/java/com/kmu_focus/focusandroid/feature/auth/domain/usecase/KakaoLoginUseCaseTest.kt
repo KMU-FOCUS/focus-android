@@ -2,7 +2,6 @@ package com.kmu_focus.focusandroid.feature.auth.domain.usecase
 
 import com.kmu_focus.focusandroid.feature.auth.domain.model.AuthError
 import com.kmu_focus.focusandroid.feature.auth.domain.repository.KakaoAuthRepository
-import com.kmu_focus.focusandroid.feature.auth.domain.session.AuthSessionManager
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -15,14 +14,12 @@ import org.junit.Test
 class KakaoLoginUseCaseTest {
 
     private lateinit var kakaoAuthRepository: KakaoAuthRepository
-    private lateinit var authSessionManager: AuthSessionManager
     private lateinit var useCase: KakaoLoginUseCase
 
     @Before
     fun setup() {
         kakaoAuthRepository = mockk()
-        authSessionManager = AuthSessionManager()
-        useCase = KakaoLoginUseCase(kakaoAuthRepository, authSessionManager)
+        useCase = KakaoLoginUseCase(kakaoAuthRepository)
     }
 
     @Test
@@ -35,7 +32,6 @@ class KakaoLoginUseCaseTest {
 
         assertTrue(result.isSuccess)
         assertEquals(expectedToken, result.getOrNull())
-        assertTrue(authSessionManager.isLoggedIn.value)
         coVerify(exactly = 1) { kakaoAuthRepository.login(context) }
     }
 
@@ -49,7 +45,6 @@ class KakaoLoginUseCaseTest {
 
         assertTrue(result.isFailure)
         assertEquals("로그인 취소", result.exceptionOrNull()?.message)
-        assertTrue(!authSessionManager.isLoggedIn.value)
     }
 
     @Test
@@ -61,6 +56,5 @@ class KakaoLoginUseCaseTest {
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is AuthError.Unexpected)
-        assertTrue(!authSessionManager.isLoggedIn.value)
     }
 }

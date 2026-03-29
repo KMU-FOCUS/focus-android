@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.kmu_focus.focusandroid.feature.auth.domain.model.AuthError
 import com.kmu_focus.focusandroid.feature.auth.domain.usecase.AutoLoginUseCase
 import com.kmu_focus.focusandroid.feature.auth.domain.usecase.KakaoLoginUseCase
+import com.kmu_focus.focusandroid.feature.auth.domain.usecase.ServerLoginUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +24,7 @@ sealed interface AuthUiState {
 class AuthViewModel @Inject constructor(
     private val kakaoLoginUseCase: KakaoLoginUseCase,
     private val autoLoginUseCase: AutoLoginUseCase,
+    private val serverLoginUseCase: ServerLoginUseCase,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Loading)
@@ -37,17 +39,7 @@ class AuthViewModel @Inject constructor(
                 onSuccess = { isValid ->
                     if (isValid) AuthUiState.Success else AuthUiState.NeedLogin
                 },
-                onFailure = { throwable ->
-                    when (throwable) {
-                        is AuthError.TokenExpired,
-                        is AuthError.TokenMissing,
-                        -> AuthUiState.NeedLogin
-
-                        else -> AuthUiState.Error(
-                            throwable.message ?: "자동 로그인 실패"
-                        )
-                    }
-                },
+                onFailure = { throwable -> toUiState(throwable, "자동 로그인 실패") },
             )
         }
     }
@@ -55,22 +47,36 @@ class AuthViewModel @Inject constructor(
     fun kakaoLogin(context: Any) {
         _uiState.value = AuthUiState.Loading
         viewModelScope.launch {
-            val result = runCatching { kakaoLoginUseCase(context) }
+            val kakaoResult = runCatching { kakaoLoginUseCase(context) }
                 .getOrElse { Result.failure(it) }
 
-            result
-                .onSuccess {
-                    _uiState.value = AuthUiState.Success
-                }
-                .onFailure { throwable ->
-                    _uiState.value = when (throwable) {
-                        is AuthError.TokenExpired,
-                        is AuthError.TokenMissing,
-                        -> AuthUiState.NeedLogin
+            kakaoResult.fold(
+                onSuccess = { kakaoAccessToken ->
+                    val serverResult = runCatching { serverLoginUseCase(kakaoAccessToken) }
+                        .getOrElse { Result.failure(it) }
 
-                        else -> AuthUiState.Error(throwable.message ?: "로그인 실패")
-                    }
-                }
+                    _uiState.value = serverResult.fold(
+                        onSuccess = { AuthUiState.Success },
+                        onFailure = { throwable -> toUiState(throwable, "로그인 실패") },
+                    )
+                },
+                onFailure = { throwable ->
+                    _uiState.value = toUiState(throwable, "로그인 실패")
+                },
+            )
+        }
+    }
+
+    private fun toUiState(
+        throwable: Throwable,
+        fallbackMessage: String,
+    ): AuthUiState {
+        return when (throwable) {
+            is AuthError.TokenExpired,
+            is AuthError.TokenMissing,
+            -> AuthUiState.NeedLogin
+
+            else -> AuthUiState.Error(throwable.message ?: fallbackMessage)
         }
     }
 }

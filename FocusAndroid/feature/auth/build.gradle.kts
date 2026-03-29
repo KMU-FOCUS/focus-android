@@ -58,6 +58,12 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
 
+    // Modules
+    implementation(project(":core:network"))
+
+    // Network
+    implementation(libs.retrofit)
+
     // Kakao SDK
     implementation("com.kakao.sdk:v2-user:2.20.6")
 

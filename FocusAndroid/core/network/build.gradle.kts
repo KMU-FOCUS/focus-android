@@ -1,8 +1,18 @@
+import java.util.Properties
+import org.gradle.api.GradleException
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
+}
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
 }
 
 android {
@@ -12,6 +22,17 @@ android {
     defaultConfig {
         minSdk = 35
         consumerProguardFiles("consumer-rules.pro")
+
+        val serverBaseUrl = localProperties
+            .getProperty("serverBaseUrl")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: throw GradleException("local.properties에 serverBaseUrl을 설정해야 합니다.")
+
+        check(serverBaseUrl.endsWith("/")) {
+            "serverBaseUrl은 반드시 / 로 끝나야 합니다."
+        }
+        buildConfigField("String", "SERVER_BASE_URL", "\"$serverBaseUrl\"")
     }
 
     buildFeatures {
