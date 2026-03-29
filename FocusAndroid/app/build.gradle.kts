@@ -79,6 +79,7 @@ dependencies {
     implementation(project(":core:ai"))
     implementation(project(":core:media"))
     implementation(project(":core:metadata"))
+    implementation(project(":core:network"))
 
     // Core & UI
     implementation(libs.androidx.core.ktx)

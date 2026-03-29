@@ -31,6 +31,12 @@ coroutines = "1.9.0"
 media3 = "1.4.1"
 coil = "2.5.0"
 
+# --- Network ---
+retrofit = "2.11.0"
+okhttp = "4.12.0"
+gson = "2.11.0"
+securityCrypto = "1.1.0"
+
 # --- CameraX ---
 camerax = "1.4.1"
 
@@ -75,6 +81,15 @@ androidx-media3-common = { group = "androidx.media3", name = "media3-common", ve
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+
+# --- Network ---
+retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
+retrofit-converter-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+androidx-security-crypto-ktx = { group = "androidx.security", name = "security-crypto-ktx", version.ref = "securityCrypto" }
 
 # --- Testing ---
 junit = { group = "junit", name = "junit", version.ref = "junit" }
