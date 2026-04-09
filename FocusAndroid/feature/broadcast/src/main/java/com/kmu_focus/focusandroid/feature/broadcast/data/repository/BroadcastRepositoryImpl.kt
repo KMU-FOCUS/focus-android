@@ -144,7 +144,7 @@ class BroadcastRepositoryImpl @Inject constructor(
     }
 
     private suspend fun executeUnit(
-        apiCall: suspend () -> Response<ApiResponse<Unit?>>,
+        apiCall: suspend () -> Response<ApiResponse<Unit>>,
         failureMessage: String,
     ): Result<Unit> {
         return try {

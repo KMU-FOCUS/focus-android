@@ -52,15 +52,15 @@ interface BroadcastApi {
     @DELETE("/api/v1/broadcasts/{broadcastId}")
     suspend fun deleteBroadcast(
         @Path("broadcastId") broadcastId: String,
-    ): Response<ApiResponse<Unit?>>
+    ): Response<ApiResponse<Unit>>
 
     @POST("/api/v1/broadcasts/{broadcastId}/streamer-heartbeat")
     suspend fun streamerHeartbeat(
         @Path("broadcastId") broadcastId: String,
-    ): Response<ApiResponse<Unit?>>
+    ): Response<ApiResponse<Unit>>
 
     @POST("/api/v1/broadcasts/{broadcastId}/heartbeat")
     suspend fun viewerHeartbeat(
         @Path("broadcastId") broadcastId: String,
-    ): Response<ApiResponse<Unit?>>
+    ): Response<ApiResponse<Unit>>
 }

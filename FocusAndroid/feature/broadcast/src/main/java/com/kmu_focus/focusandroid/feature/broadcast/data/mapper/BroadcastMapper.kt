@@ -8,12 +8,8 @@ fun BroadcastResponseDto.toEntity(): Broadcast {
     return Broadcast(
         broadcastId = broadcastId,
         title = title,
-        status = when (status.trim().uppercase()) {
-            BroadcastStatus.READY.name -> BroadcastStatus.READY
-            BroadcastStatus.ON_AIR.name -> BroadcastStatus.ON_AIR
-            BroadcastStatus.ENDED.name -> BroadcastStatus.ENDED
-            else -> BroadcastStatus.ERROR
-        },
+        status = runCatching { BroadcastStatus.valueOf(status) }
+            .getOrDefault(BroadcastStatus.ERROR),
         streamKey = streamKey,
         hlsUrl = hlsUrl,
         memberName = memberName,
