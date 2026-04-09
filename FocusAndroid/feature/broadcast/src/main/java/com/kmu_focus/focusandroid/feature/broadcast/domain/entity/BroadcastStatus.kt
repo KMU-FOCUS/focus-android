@@ -6,10 +6,4 @@ enum class BroadcastStatus {
     ENDED,
     ERROR,
     ;
-
-    companion object {
-        fun from(value: String?): BroadcastStatus {
-            return entries.firstOrNull { it.name == value?.trim()?.uppercase() } ?: ERROR
-        }
-    }
 }
