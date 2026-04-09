@@ -76,6 +76,7 @@ dependencies {
     implementation(project(":feature:video"))
     implementation(project(":feature:camera"))
     implementation(project(":feature:auth"))
+    implementation(project(":feature:broadcast"))
     implementation(project(":core:ai"))
     implementation(project(":core:media"))
     implementation(project(":core:metadata"))
