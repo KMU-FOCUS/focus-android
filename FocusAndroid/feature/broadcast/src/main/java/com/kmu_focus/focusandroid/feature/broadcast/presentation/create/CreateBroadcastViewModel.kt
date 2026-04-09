@@ -82,15 +82,9 @@ class CreateBroadcastViewModel @Inject constructor(
         val currentState = uiState.value
         val broadcast = currentState.createdBroadcast
         if (broadcast == null) {
-            _uiState.update { current ->
-                current.copy(error = "먼저 방송을 생성해야 합니다")
-            }
             return
         }
         if (currentState.avatarId.isBlank()) {
-            _uiState.update { current ->
-                current.copy(error = "avatarId는 비워둘 수 없습니다")
-            }
             return
         }
 

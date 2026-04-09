@@ -134,4 +134,42 @@ class CreateBroadcastViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(BroadcastStatus.ON_AIR, state.createdBroadcast?.status)
     }
+
+    @Test
+    fun `방송 시작 실패 시 error가 설정되고 createdBroadcast는 유지된다`() = runTest {
+        coEvery { createBroadcastUseCase("테스트 방송") } returns Result.success(createdBroadcast)
+        coEvery { startBroadcastUseCase(any(), any()) } returns Result.failure(RuntimeException("워커 시작 실패"))
+
+        viewModel.updateTitle("테스트 방송")
+        viewModel.selectAvatar("avatar-a")
+        viewModel.createBroadcast()
+        viewModel.startBroadcast()
+
+        val state = viewModel.uiState.value
+        assertNotNull(state.createdBroadcast)
+        assertEquals(BroadcastStatus.READY, state.createdBroadcast?.status)
+        assertEquals("워커 시작 실패", state.error)
+    }
+
+    @Test
+    fun `createdBroadcast가 null일 때 startBroadcast 호출 시 무시된다`() = runTest {
+        viewModel.startBroadcast()
+
+        val state = viewModel.uiState.value
+        assertNull(state.createdBroadcast)
+        coVerify(exactly = 0) { startBroadcastUseCase(any(), any()) }
+    }
+
+    @Test
+    fun `error 발생 후 다시 생성 시도하면 error가 초기화된다`() = runTest {
+        coEvery { createBroadcastUseCase(any()) } returns Result.failure(RuntimeException("실패")) andThen Result.success(createdBroadcast)
+
+        viewModel.updateTitle("테스트 방송")
+        viewModel.createBroadcast()
+        assertEquals("실패", viewModel.uiState.value.error)
+
+        viewModel.createBroadcast()
+        assertNull(viewModel.uiState.value.error)
+        assertNotNull(viewModel.uiState.value.createdBroadcast)
+    }
 }

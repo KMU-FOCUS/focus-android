@@ -107,4 +107,28 @@ class BroadcastListViewModelTest {
 
         assertEquals(1, viewModel.uiState.value.broadcasts.size)
     }
+
+    @Test
+    fun `방송 삭제 실패 시 목록은 유지되고 error가 설정된다`() = runTest {
+        coEvery { getBroadcastListUseCase(any(), any()) } returns Result.success(listOf(sampleBroadcast))
+        coEvery { deleteBroadcastUseCase("broadcast-1") } returns Result.failure(RuntimeException("권한 없음"))
+
+        viewModel = BroadcastListViewModel(getBroadcastListUseCase, deleteBroadcastUseCase)
+        viewModel.deleteBroadcast("broadcast-1")
+
+        assertEquals(1, viewModel.uiState.value.broadcasts.size)
+        assertEquals("권한 없음", viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `ON_AIR 상태 방송 클릭 시 해당 broadcastId를 식별할 수 있다`() = runTest {
+        val onAirBroadcast = sampleBroadcast.copy(status = BroadcastStatus.ON_AIR)
+        coEvery { getBroadcastListUseCase(any(), any()) } returns Result.success(listOf(onAirBroadcast))
+
+        viewModel = BroadcastListViewModel(getBroadcastListUseCase, deleteBroadcastUseCase)
+
+        val target = viewModel.uiState.value.broadcasts.first()
+        assertEquals(BroadcastStatus.ON_AIR, target.status)
+        assertEquals("broadcast-1", target.broadcastId)
+    }
 }

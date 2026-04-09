@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 
 data class BroadcastListUiState(
     val broadcasts: List<Broadcast> = emptyList(),
-    val isLoading: Boolean = true,
+    val isLoading: Boolean = false,
     val error: String? = null,
 )
 
@@ -73,18 +73,22 @@ class BroadcastListViewModel @Inject constructor(
         viewModelScope.launch {
             getBroadcastListUseCase(page = page, size = size)
                 .onSuccess { broadcasts ->
-                    _uiState.value = BroadcastListUiState(
-                        broadcasts = broadcasts,
-                        isLoading = false,
-                        error = null,
-                    )
+                    _uiState.update {
+                        BroadcastListUiState(
+                            broadcasts = broadcasts,
+                            isLoading = false,
+                            error = null,
+                        )
+                    }
                 }
                 .onFailure { throwable ->
-                    _uiState.value = BroadcastListUiState(
-                        broadcasts = emptyList(),
-                        isLoading = false,
-                        error = throwable.message ?: "방송 목록 조회 실패",
-                    )
+                    _uiState.update {
+                        BroadcastListUiState(
+                            broadcasts = emptyList(),
+                            isLoading = false,
+                            error = throwable.message ?: "방송 목록 조회 실패",
+                        )
+                    }
                 }
         }
     }
