@@ -1,16 +1,16 @@
 package com.kmu_focus.focusandroid.feature.auth.domain.usecase
 
 import com.kmu_focus.focusandroid.feature.auth.domain.model.AuthError
-import com.kmu_focus.focusandroid.feature.auth.domain.repository.KakaoAuthRepository
+import com.kmu_focus.focusandroid.feature.auth.domain.repository.ServerAuthRepository
 import com.kmu_focus.focusandroid.feature.auth.domain.session.AuthSessionManager
 import javax.inject.Inject
 
 class AutoLoginUseCase @Inject constructor(
-    private val repository: KakaoAuthRepository,
+    private val serverAuthRepository: ServerAuthRepository,
     private val authSessionManager: AuthSessionManager,
 ) {
     suspend operator fun invoke(): Result<Boolean> {
-        val result = runCatching { repository.validateToken() }
+        val result = runCatching { serverAuthRepository.validateStoredSession() }
             .getOrElse {
                 Result.failure(
                     AuthError.Unexpected(

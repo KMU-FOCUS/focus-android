@@ -1,5 +1,6 @@
 package com.kmu_focus.focusandroid.feature.auth.data.repository
 
+import com.kmu_focus.focusandroid.core.network.data.TokenRefreshService
 import com.kmu_focus.focusandroid.core.network.domain.TokenStore
 import com.kmu_focus.focusandroid.core.network.dto.ApiResponse
 import com.kmu_focus.focusandroid.core.network.dto.AppTokenResponse
@@ -10,22 +11,26 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Response
+import java.util.Base64
 
 class ServerAuthRepositoryImplTest {
 
     private lateinit var authApi: AuthApi
     private lateinit var tokenStore: TokenStore
+    private lateinit var tokenRefreshService: TokenRefreshService
     private lateinit var repository: ServerAuthRepositoryImpl
 
     @Before
     fun setup() {
         authApi = mockk()
         tokenStore = mockk(relaxed = true)
-        repository = ServerAuthRepositoryImpl(authApi, tokenStore)
+        tokenRefreshService = mockk()
+        repository = ServerAuthRepositoryImpl(authApi, tokenStore, tokenRefreshService)
     }
 
     @Test
@@ -103,4 +108,75 @@ class ServerAuthRepositoryImplTest {
 
         assertTrue(result.isFailure)
     }
+
+    @Test
+    fun `유효한 access token이 있으면 자동 로그인 성공을 반환한다`() = runTest {
+        coEvery { tokenStore.getAccessToken() } returns createJwt(expEpochSeconds = futureEpochSeconds())
+        coEvery { tokenStore.getRefreshToken() } returns "refresh_token"
+
+        val result = repository.validateStoredSession()
+
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrNull() == true)
+        coVerify(exactly = 0) { tokenRefreshService.refresh() }
+    }
+
+    @Test
+    fun `만료된 access token과 refresh token이 있으면 refresh 후 성공을 반환한다`() = runTest {
+        coEvery { tokenStore.getAccessToken() } returns createJwt(expEpochSeconds = pastEpochSeconds())
+        coEvery { tokenStore.getRefreshToken() } returns "refresh_token"
+        coEvery { tokenRefreshService.refresh() } returns true
+
+        val result = repository.validateStoredSession()
+
+        assertTrue(result.isSuccess)
+        coVerify(exactly = 1) { tokenRefreshService.refresh() }
+    }
+
+    @Test
+    fun `저장된 토큰이 없으면 TokenMissing 실패를 반환한다`() = runTest {
+        coEvery { tokenStore.getAccessToken() } returns null
+        coEvery { tokenStore.getRefreshToken() } returns null
+
+        val result = repository.validateStoredSession()
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is AuthError.TokenMissing)
+    }
+
+    @Test
+    fun `refresh token이 있지만 refresh 실패 시 TokenExpired 실패를 반환한다`() = runTest {
+        coEvery { tokenStore.getAccessToken() } returns createJwt(expEpochSeconds = pastEpochSeconds())
+        coEvery { tokenStore.getRefreshToken() } returns "refresh_token"
+        coEvery { tokenRefreshService.refresh() } returns false
+
+        val result = repository.validateStoredSession()
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is AuthError.TokenExpired)
+    }
+
+    @Test
+    fun `refresh 중 네트워크 예외가 발생하면 Network 실패를 반환한다`() = runTest {
+        coEvery { tokenStore.getAccessToken() } returns createJwt(expEpochSeconds = pastEpochSeconds())
+        coEvery { tokenStore.getRefreshToken() } returns "refresh_token"
+        coEvery { tokenRefreshService.refresh() } throws java.io.IOException("네트워크 끊김")
+
+        val result = repository.validateStoredSession()
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is AuthError.Network)
+    }
+
+    private fun createJwt(expEpochSeconds: Long): String {
+        val header = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("""{"alg":"HS256","typ":"JWT"}""".toByteArray())
+        val payload = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("""{"exp":$expEpochSeconds}""".toByteArray())
+        return "$header.$payload.signature"
+    }
+
+    private fun futureEpochSeconds(): Long = System.currentTimeMillis() / 1000 + 3_600
+
+    private fun pastEpochSeconds(): Long = System.currentTimeMillis() / 1000 - 3_600
 }
