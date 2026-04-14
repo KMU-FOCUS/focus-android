@@ -5,6 +5,7 @@ import com.kmu_focus.focusandroid.core.network.domain.TokenStore
 import com.kmu_focus.focusandroid.core.network.dto.ApiResponse
 import com.kmu_focus.focusandroid.core.network.dto.AppTokenResponse
 import com.kmu_focus.focusandroid.feature.auth.data.remote.AuthApi
+import com.kmu_focus.focusandroid.feature.auth.data.remote.dto.KakaoLoginRequest
 import com.kmu_focus.focusandroid.feature.auth.domain.model.AuthError
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -42,6 +43,7 @@ class ServerAuthRepositoryImplTest {
         val result = repository.loginWithKakaoToken("kakao_token")
 
         assertTrue(result.isSuccess)
+        coVerify { authApi.kakaoLogin(KakaoLoginRequest(accessToken = "kakao_token")) }
         coVerify { tokenStore.save("server_access", "server_refresh") }
     }
 

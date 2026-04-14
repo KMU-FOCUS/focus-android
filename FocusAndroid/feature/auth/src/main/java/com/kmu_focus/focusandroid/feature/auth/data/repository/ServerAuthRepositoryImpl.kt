@@ -23,7 +23,7 @@ class ServerAuthRepositoryImpl @Inject constructor(
     ): Result<Unit> {
         return try {
             val response = authApi.kakaoLogin(
-                KakaoLoginRequest(code = kakaoAccessToken),
+                KakaoLoginRequest(accessToken = kakaoAccessToken),
             )
             val body = response.body()
             val tokenData = body?.data

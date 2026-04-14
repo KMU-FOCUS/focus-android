@@ -1,5 +1,5 @@
 package com.kmu_focus.focusandroid.feature.auth.data.remote.dto
 
 data class KakaoLoginRequest(
-    val code: String,
+    val accessToken: String,
 )
