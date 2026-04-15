@@ -58,10 +58,9 @@ class CreateBroadcastViewModelTest {
     }
 
     @Test
-    fun `초기 상태는 빈 제목과 아바타이다`() {
+    fun `초기 상태는 빈 제목이다`() {
         val state = viewModel.uiState.value
         assertEquals("", state.title)
-        assertEquals("", state.avatarId)
         assertFalse(state.isCreating)
         assertNull(state.createdBroadcast)
         assertNull(state.error)
@@ -75,10 +74,16 @@ class CreateBroadcastViewModelTest {
     }
 
     @Test
-    fun `아바타 선택 시 uiState가 업데이트된다`() {
-        viewModel.selectAvatar("avatar-a")
+    fun `방송 시작 시 기본 avatarId를 사용한다`() = runTest {
+        val startedBroadcast = createdBroadcast.copy(status = BroadcastStatus.ON_AIR)
+        coEvery { createBroadcastUseCase("테스트 방송") } returns Result.success(createdBroadcast)
+        coEvery { startBroadcastUseCase("broadcast-1", "avatar-a") } returns Result.success(startedBroadcast)
 
-        assertEquals("avatar-a", viewModel.uiState.value.avatarId)
+        viewModel.updateTitle("테스트 방송")
+        viewModel.createBroadcast()
+        viewModel.startBroadcast()
+
+        coVerify(exactly = 1) { startBroadcastUseCase("broadcast-1", "avatar-a") }
     }
 
     @Test
@@ -127,7 +132,6 @@ class CreateBroadcastViewModelTest {
         coEvery { startBroadcastUseCase("broadcast-1", "avatar-a") } returns Result.success(startedBroadcast)
 
         viewModel.updateTitle("테스트 방송")
-        viewModel.selectAvatar("avatar-a")
         viewModel.createBroadcast()
         viewModel.startBroadcast()
 
@@ -141,7 +145,6 @@ class CreateBroadcastViewModelTest {
         coEvery { startBroadcastUseCase(any(), any()) } returns Result.failure(RuntimeException("워커 시작 실패"))
 
         viewModel.updateTitle("테스트 방송")
-        viewModel.selectAvatar("avatar-a")
         viewModel.createBroadcast()
         viewModel.startBroadcast()
 

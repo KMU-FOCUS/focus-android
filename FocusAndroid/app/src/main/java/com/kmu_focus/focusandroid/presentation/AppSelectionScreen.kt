@@ -1,20 +1,13 @@
 package com.kmu_focus.focusandroid.presentation
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -142,8 +135,6 @@ fun AppSelectionScreen(
 
         AppMode.BROADCAST_CAMERA -> {
             BroadcastCameraHost(
-                broadcastId = activeBroadcastId,
-                streamKey = activeStreamKey,
                 modifier = modifier,
                 onBack = {
                     selectedMode = AppMode.BROADCAST_LIST
@@ -204,49 +195,13 @@ private fun SelectionButtons(
 
 @Composable
 private fun BroadcastCameraHost(
-    broadcastId: String,
-    streamKey: String,
     onRecordingComplete: (File) -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
 ) {
-    Box(modifier = modifier.fillMaxSize()) {
-        CameraScreen(
-            onRecordingComplete = onRecordingComplete,
-            onBack = onBack,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        Card(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.Black.copy(alpha = 0.72f),
-            ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .background(Color.Transparent)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = "방송 모드",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White,
-                )
-                Text(
-                    text = "Broadcast ID: $broadcastId",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                )
-                Text(
-                    text = "Stream Key: $streamKey",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                )
-            }
-        }
-    }
+    CameraScreen(
+        onRecordingComplete = onRecordingComplete,
+        onBack = onBack,
+        modifier = modifier.fillMaxSize(),
+    )
 }

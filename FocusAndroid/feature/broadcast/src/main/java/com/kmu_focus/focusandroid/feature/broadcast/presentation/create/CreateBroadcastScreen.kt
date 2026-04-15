@@ -76,38 +76,6 @@ fun CreateBroadcastScreen(
             singleLine = true,
         )
 
-        OutlinedTextField(
-            value = uiState.avatarId,
-            onValueChange = viewModel::selectAvatar,
-            label = { Text("아바타 ID") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "아바타 선택",
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AvatarButton(
-                    avatarId = "avatar-a",
-                    selectedAvatarId = uiState.avatarId,
-                    onSelect = viewModel::selectAvatar,
-                )
-                AvatarButton(
-                    avatarId = "avatar-b",
-                    selectedAvatarId = uiState.avatarId,
-                    onSelect = viewModel::selectAvatar,
-                )
-                AvatarButton(
-                    avatarId = "avatar-c",
-                    selectedAvatarId = uiState.avatarId,
-                    onSelect = viewModel::selectAvatar,
-                )
-            }
-        }
-
         Button(
             onClick = viewModel::createBroadcast,
             enabled = !uiState.isCreating,
@@ -118,8 +86,7 @@ fun CreateBroadcastScreen(
         Button(
             onClick = viewModel::startBroadcast,
             enabled = !uiState.isCreating &&
-                uiState.createdBroadcast != null &&
-                uiState.avatarId.isNotBlank(),
+                uiState.createdBroadcast != null,
         ) {
             Text("방송 시작")
         }
@@ -135,29 +102,18 @@ fun CreateBroadcastScreen(
             broadcast.hlsUrl?.let { Text("HLS: $it") }
         }
 
+        if (uiState.createdBroadcast != null) {
+            Text(
+                text = "방송 시작 시 기본 아바타 ID(avatar-a)를 사용합니다.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
         uiState.error?.let { error ->
             Text(
                 text = error,
                 color = MaterialTheme.colorScheme.error,
             )
-        }
-    }
-}
-
-@Composable
-private fun AvatarButton(
-    avatarId: String,
-    selectedAvatarId: String,
-    onSelect: (String) -> Unit,
-) {
-    val selected = avatarId == selectedAvatarId
-    if (selected) {
-        Button(onClick = { onSelect(avatarId) }) {
-            Text(avatarId)
-        }
-    } else {
-        OutlinedButton(onClick = { onSelect(avatarId) }) {
-            Text(avatarId)
         }
     }
 }

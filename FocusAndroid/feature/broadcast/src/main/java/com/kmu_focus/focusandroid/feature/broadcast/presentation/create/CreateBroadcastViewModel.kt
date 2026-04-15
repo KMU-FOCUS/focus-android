@@ -13,9 +13,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+private const val DEFAULT_AVATAR_ID = "avatar-a"
+
 data class CreateBroadcastUiState(
     val title: String = "",
-    val avatarId: String = "",
     val isCreating: Boolean = false,
     val createdBroadcast: Broadcast? = null,
     val error: String? = null,
@@ -33,12 +34,6 @@ class CreateBroadcastViewModel @Inject constructor(
     fun updateTitle(title: String) {
         _uiState.update { current ->
             current.copy(title = title, error = null)
-        }
-    }
-
-    fun selectAvatar(avatarId: String) {
-        _uiState.update { current ->
-            current.copy(avatarId = avatarId, error = null)
         }
     }
 
@@ -84,9 +79,6 @@ class CreateBroadcastViewModel @Inject constructor(
         if (broadcast == null) {
             return
         }
-        if (currentState.avatarId.isBlank()) {
-            return
-        }
 
         _uiState.update { current ->
             current.copy(isCreating = true, error = null)
@@ -95,7 +87,7 @@ class CreateBroadcastViewModel @Inject constructor(
         viewModelScope.launch {
             startBroadcastUseCase(
                 broadcastId = broadcast.broadcastId,
-                avatarId = currentState.avatarId,
+                avatarId = DEFAULT_AVATAR_ID,
             ).onSuccess { startedBroadcast ->
                 _uiState.update { current ->
                     current.copy(
