@@ -51,14 +51,21 @@ class MpegTsPacketizer {
     fun packetizeVideo(
         nalUnit: ByteArray,
         ptsUs: Long,
+        isKeyFrame: Boolean = false,
     ): List<ByteArray> {
+        val pts90kHz = (ptsUs * 90L) / 1000L
         val pesPayload = buildPesPacket(
             streamId = VIDEO_STREAM_ID,
             elementaryStream = nalUnit,
             ptsUs = ptsUs,
             useUnboundedPacketLength = true,
         )
-        return packetizePes(pid = DEFAULT_VIDEO_PID, pesPayload = pesPayload)
+        return packetizePes(
+            pid = DEFAULT_VIDEO_PID,
+            pesPayload = pesPayload,
+            pcr90kHz = pts90kHz,
+            randomAccessIndicator = isKeyFrame,
+        )
     }
 
     fun packetizeAudio(
@@ -109,26 +116,131 @@ class MpegTsPacketizer {
     private fun packetizePes(
         pid: Int,
         pesPayload: ByteArray,
+        pcr90kHz: Long? = null,
+        randomAccessIndicator: Boolean = false,
     ): List<ByteArray> {
         val packets = mutableListOf<ByteArray>()
         var offset = 0
+        var isFirstPacket = true
         while (offset < pesPayload.size) {
-            val packet = createTsPacketHeader(
-                pid = pid,
-                payloadUnitStart = offset == 0,
-            )
-            val copyLength = min(TS_PACKET_SIZE - TS_HEADER_SIZE, pesPayload.size - offset)
-            System.arraycopy(
-                pesPayload,
-                offset,
-                packet,
-                TS_HEADER_SIZE,
-                copyLength,
-            )
-            offset += copyLength
-            packets += packet
+            val remainingBytes = pesPayload.size - offset
+            if (isFirstPacket && pcr90kHz != null) {
+                val copyLength = min(MAX_PAYLOAD_WITH_PCR, remainingBytes)
+                val payloadStartIndex = createPacketWithPcrAdaptation(
+                    pid = pid,
+                    payloadUnitStart = true,
+                    pcr90kHz = pcr90kHz,
+                    randomAccessIndicator = randomAccessIndicator,
+                    payloadSize = copyLength,
+                )
+                val packet = transportPacketBuffer
+                System.arraycopy(pesPayload, offset, packet, payloadStartIndex, copyLength)
+                offset += copyLength
+                packets += packet.copyOf()
+                isFirstPacket = false
+            } else {
+                val copyLength = min(MAX_TS_PAYLOAD_SIZE, remainingBytes)
+                val payloadUnitStart = isFirstPacket && offset == 0
+                val payloadStartIndex = if (copyLength == MAX_TS_PAYLOAD_SIZE) {
+                    createPayloadOnlyPacket(pid = pid, payloadUnitStart = payloadUnitStart)
+                    TS_HEADER_SIZE
+                } else {
+                    createStuffedPacket(pid = pid, payloadUnitStart = payloadUnitStart, payloadSize = copyLength)
+                }
+                val packet = transportPacketBuffer
+                System.arraycopy(pesPayload, offset, packet, payloadStartIndex, copyLength)
+                offset += copyLength
+                packets += packet.copyOf()
+                isFirstPacket = false
+            }
         }
         return packets
+    }
+
+    private fun createPayloadOnlyPacket(
+        pid: Int,
+        payloadUnitStart: Boolean,
+    ) {
+        val packet = transportPacketBuffer
+        packet.fill(0xFF.toByte())
+        val continuityCounter = nextContinuityCounter(pid)
+        packet[0] = SYNC_BYTE
+        packet[1] = (((if (payloadUnitStart) 0x40 else 0x00) or ((pid shr 8) and 0x1F))).toByte()
+        packet[2] = (pid and 0xFF).toByte()
+        packet[3] = (0x10 or continuityCounter).toByte()
+    }
+
+    private fun createStuffedPacket(
+        pid: Int,
+        payloadUnitStart: Boolean,
+        payloadSize: Int,
+    ): Int {
+        val packet = transportPacketBuffer
+        packet.fill(0xFF.toByte())
+        val continuityCounter = nextContinuityCounter(pid)
+        val adaptationFieldLength = MAX_TS_PAYLOAD_SIZE - payloadSize - 1
+        packet[0] = SYNC_BYTE
+        packet[1] = (((if (payloadUnitStart) 0x40 else 0x00) or ((pid shr 8) and 0x1F))).toByte()
+        packet[2] = (pid and 0xFF).toByte()
+        packet[3] = (0x30 or continuityCounter).toByte()
+        packet[4] = adaptationFieldLength.toByte()
+        if (adaptationFieldLength > 0) {
+            packet[5] = 0x00
+            for (index in 6 until 5 + adaptationFieldLength) {
+                packet[index] = 0xFF.toByte()
+            }
+        }
+        return TS_HEADER_SIZE + 1 + adaptationFieldLength
+    }
+
+    /**
+     * PCR + optional RAI가 포함된 adaptation field를 가진 TS 패킷을 생성한다.
+     * payload 공간이 MAX_PAYLOAD_WITH_PCR(176)보다 작으면 stuffing으로 채운다.
+     * @return payload 시작 인덱스
+     */
+    private fun createPacketWithPcrAdaptation(
+        pid: Int,
+        payloadUnitStart: Boolean,
+        pcr90kHz: Long,
+        randomAccessIndicator: Boolean,
+        payloadSize: Int,
+    ): Int {
+        val packet = transportPacketBuffer
+        packet.fill(0xFF.toByte())
+        val continuityCounter = nextContinuityCounter(pid)
+
+        packet[0] = SYNC_BYTE
+        packet[1] = (((if (payloadUnitStart) 0x40 else 0x00) or ((pid shr 8) and 0x1F))).toByte()
+        packet[2] = (pid and 0xFF).toByte()
+        // adaptation_field_control = 11 (adaptation + payload)
+        packet[3] = (0x30 or continuityCounter).toByte()
+
+        val stuffingNeeded = (MAX_PAYLOAD_WITH_PCR - payloadSize).coerceAtLeast(0)
+        val adaptationFieldLength = PCR_ADAPTATION_CONTENT_SIZE + stuffingNeeded
+        packet[4] = adaptationFieldLength.toByte()
+
+        // flags: PCR flag (bit 4) + optional random_access_indicator (bit 6)
+        var flags = 0x10
+        if (randomAccessIndicator) flags = flags or 0x40
+        packet[5] = flags.toByte()
+
+        // PCR (6 bytes): 33-bit base + 6 reserved bits(1) + 9-bit extension(0)
+        encodePcrInto(packet, 6, pcr90kHz)
+
+        // stuffing bytes는 이미 0xFF로 채워져 있음 (fill)
+        return TS_PACKET_SIZE - payloadSize
+    }
+
+    private fun encodePcrInto(packet: ByteArray, offset: Int, pcr90kHz: Long) {
+        val pcrBase = pcr90kHz
+        val pcrExt = 0
+        packet[offset] = ((pcrBase shr 25) and 0xFF).toByte()
+        packet[offset + 1] = ((pcrBase shr 17) and 0xFF).toByte()
+        packet[offset + 2] = ((pcrBase shr 9) and 0xFF).toByte()
+        packet[offset + 3] = ((pcrBase shr 1) and 0xFF).toByte()
+        // bit 7: PCR base LSB, bits 6-1: reserved (1), bit 0: PCR ext MSB
+        packet[offset + 4] = (((pcrBase and 0x01).toInt() shl 7) or 0x7E or ((pcrExt shr 8) and 0x01)).toByte()
+        packet[offset + 5] = (pcrExt and 0xFF).toByte()
     }
 
     private fun createTsPacketHeader(
@@ -193,12 +305,19 @@ class MpegTsPacketizer {
         const val DEFAULT_VIDEO_PID = 0x101
         const val DEFAULT_AUDIO_PID = 0x102
 
+        private const val TS_HEADER_SIZE = 4
+        private const val MAX_TS_PAYLOAD_SIZE = TS_PACKET_SIZE - TS_HEADER_SIZE
+        // adaptation_field: 1 byte flags + 6 bytes PCR = 7 bytes content
+        private const val PCR_ADAPTATION_CONTENT_SIZE = 7
+        // adaptation_field_length byte(1) + content(7) = 8 bytes overhead
+        private const val MAX_PAYLOAD_WITH_PCR = MAX_TS_PAYLOAD_SIZE - 1 - PCR_ADAPTATION_CONTENT_SIZE
         private const val PAT_PID = 0x0000
         private const val PMT_PID = 0x0100
         private const val VIDEO_STREAM_ID = 0xE0
         private const val AUDIO_STREAM_ID = 0xC0
-        private const val TS_HEADER_SIZE = 4
         private const val CONTINUITY_COUNTER_MODULO = 16
         private val SYNC_BYTE = 0x47.toByte()
     }
+
+    private val transportPacketBuffer = ByteArray(TS_PACKET_SIZE)
 }

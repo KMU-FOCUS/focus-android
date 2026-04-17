@@ -78,9 +78,11 @@ dependencies {
     implementation(project(":feature:auth"))
     implementation(project(":feature:broadcast"))
     implementation(project(":core:ai"))
+    implementation(project(":core:grpc"))
     implementation(project(":core:media"))
     implementation(project(":core:metadata"))
     implementation(project(":core:network"))
+    implementation(project(":core:streaming"))
 
     // Core & UI
     implementation(libs.androidx.core.ktx)

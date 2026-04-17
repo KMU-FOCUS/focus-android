@@ -1,32 +1,45 @@
 package com.kmu_focus.focusandroid.presentation
 
 import android.widget.Toast
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kmu_focus.focusandroid.R
 import com.kmu_focus.focusandroid.feature.auth.presentation.AuthScreen
 import com.kmu_focus.focusandroid.feature.auth.presentation.AuthSessionViewModel
+import com.kmu_focus.focusandroid.feature.broadcast.presentation.camera.BroadcastCameraScreen
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.create.CreateBroadcastScreen
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.list.BroadcastListScreen
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraScreen
 import com.kmu_focus.focusandroid.feature.video.presentation.main.MainScreen
 import com.kmu_focus.focusandroid.feature.video.presentation.videosave.VideoSaveViewModel
-import java.io.File
+import kotlinx.coroutines.delay
 
 enum class AppMode {
     VIDEO,
@@ -45,12 +58,14 @@ fun AppSelectionScreen(
     var selectedMode by rememberSaveable { mutableStateOf<AppMode?>(null) }
     var activeBroadcastId by rememberSaveable { mutableStateOf("") }
     var activeStreamKey by rememberSaveable { mutableStateOf("") }
+    var activeHlsUrl by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(isLoggedIn) {
         if (!isLoggedIn) {
             selectedMode = null
             activeBroadcastId = ""
             activeStreamKey = ""
+            activeHlsUrl = ""
         }
     }
 
@@ -60,6 +75,7 @@ fun AppSelectionScreen(
             (activeBroadcastId.isBlank() || activeStreamKey.isBlank())
         ) {
             selectedMode = AppMode.BROADCAST_LIST
+            activeHlsUrl = ""
         }
     }
 
@@ -125,30 +141,31 @@ fun AppSelectionScreen(
         AppMode.BROADCAST_CREATE -> {
             CreateBroadcastScreen(
                 onBack = { selectedMode = AppMode.BROADCAST_LIST },
-                onBroadcastStarted = { broadcastId, streamKey ->
+                onNavigateToCamera = { broadcastId, streamKey ->
                     activeBroadcastId = broadcastId
                     activeStreamKey = streamKey
+                    activeHlsUrl = ""
                     selectedMode = AppMode.BROADCAST_CAMERA
                 },
             )
         }
 
         AppMode.BROADCAST_CAMERA -> {
-            BroadcastCameraHost(
-                modifier = modifier,
+            BroadcastCameraScreen(
+                broadcastId = activeBroadcastId,
+                streamKey = activeStreamKey,
+                hlsUrl = activeHlsUrl,
                 onBack = {
                     selectedMode = AppMode.BROADCAST_LIST
                     activeBroadcastId = ""
                     activeStreamKey = ""
-                },
-                onRecordingComplete = { file ->
-                    saveViewModel.saveRecording(file, file.absolutePath)
+                    activeHlsUrl = ""
                 },
             )
         }
 
         null -> {
-            SelectionButtons(
+            StartSelectionScreen(
                 modifier = modifier,
                 onVideoSelected = { selectedMode = AppMode.VIDEO },
                 onCameraSelected = { selectedMode = AppMode.CAMERA },
@@ -159,49 +176,209 @@ fun AppSelectionScreen(
 }
 
 @Composable
-private fun SelectionButtons(
+private fun StartSelectionScreen(
     modifier: Modifier = Modifier,
     onVideoSelected: () -> Unit,
     onCameraSelected: () -> Unit,
     onBroadcastSelected: () -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("분석 모드를 선택하세요.")
-        Button(
-            onClick = onVideoSelected,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("동영상 분석")
+    val slides = remember {
+        listOf(
+            IntroCopy(
+                title = "스트리머는 그대로, 배경 인물은 안전하게",
+                subtitle = "초상권 걱정 없는 스마트 라이브 스트리밍",
+            ),
+            IntroCopy(
+                title = "방송중 스쳐가는 사람까지",
+                subtitle = "자동으로 감지해 아바타로 전환해요",
+            ),
+            IntroCopy(
+                title = "복잡한 설정 없이 바로 시작하는",
+                subtitle = "안전한 라이브 스트리밍",
+            ),
+        )
+    }
+    var selectedSlide by rememberSaveable { mutableIntStateOf(0) }
+
+    LaunchedEffect(slides.size) {
+        while (true) {
+            delay(3_200L)
+            selectedSlide = (selectedSlide + 1) % slides.size
         }
-        Button(
-            onClick = onCameraSelected,
-            modifier = Modifier.fillMaxWidth(),
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(id = R.drawable.focus_ios_background),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.16f),
+                            Color.Black.copy(alpha = 0.34f),
+                            Color.Black.copy(alpha = 0.74f),
+                        ),
+                    ),
+                ),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 40.dp),
+            verticalArrangement = Arrangement.Bottom,
         ) {
-            Text("카메라 분석")
-        }
-        Button(
-            onClick = onBroadcastSelected,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("방송")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "FOCUS",
+                    color = Color.White,
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                PageIndicator(
+                    pageCount = slides.size,
+                    selectedPage = selectedSlide,
+                    activeColor = Color.White,
+                    inactiveColor = Color.White.copy(alpha = 0.35f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = slides[selectedSlide].title,
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = slides[selectedSlide].subtitle,
+                color = Color.White.copy(alpha = 0.86f),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            PrimaryGradientButton(
+                text = "방송 준비하기",
+                onClick = onBroadcastSelected,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                GhostModeButton(
+                    text = "카메라 분석",
+                    onClick = onCameraSelected,
+                    modifier = Modifier.weight(1f),
+                )
+                GhostModeButton(
+                    text = "동영상 분석",
+                    onClick = onVideoSelected,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun BroadcastCameraHost(
-    onRecordingComplete: (File) -> Unit,
+private fun PrimaryGradientButton(
+    text: String,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onBack: () -> Unit,
 ) {
-    CameraScreen(
-        onRecordingComplete = onRecordingComplete,
-        onBack = onBack,
-        modifier = modifier.fillMaxSize(),
-    )
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        shadowElevation = 10.dp,
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF7C3AED),
+                            Color(0xFF2563EB),
+                        ),
+                    ),
+                )
+                .height(56.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
 }
+
+@Composable
+private fun GhostModeButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Color.White.copy(alpha = 0.08f),
+            contentColor = Color.White,
+        ),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+}
+
+@Composable
+private fun PageIndicator(
+    pageCount: Int,
+    selectedPage: Int,
+    activeColor: Color,
+    inactiveColor: Color,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        repeat(pageCount) { index ->
+            Box(
+                modifier = Modifier
+                    .width(if (index == selectedPage) 22.dp else 8.dp)
+                    .height(8.dp)
+                    .background(
+                        color = if (index == selectedPage) activeColor else inactiveColor,
+                        shape = RoundedCornerShape(999.dp),
+                    ),
+            )
+        }
+    }
+}
+
+private data class IntroCopy(
+    val title: String,
+    val subtitle: String,
+)

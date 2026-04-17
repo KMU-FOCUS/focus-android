@@ -1,3 +1,6 @@
+import java.util.Properties
+import org.gradle.api.GradleException
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +8,25 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
 }
+
+val localProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+val mediaMtxHost = localProperties
+    .getProperty("mediaMtxHost")
+    ?.trim()
+    ?.takeIf { it.isNotBlank() }
+    ?: throw GradleException("local.properties에 mediaMtxHost를 설정해야 합니다.")
+
+val mediaMtxPort = localProperties
+    .getProperty("mediaMtxPort")
+    ?.trim()
+    ?.toIntOrNull()
+    ?: throw GradleException("local.properties에 mediaMtxPort를 설정해야 합니다.")
 
 android {
     namespace = "com.kmu_focus.focusandroid.feature.broadcast"
@@ -14,6 +36,8 @@ android {
         minSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+        buildConfigField("String", "MEDIA_MTX_HOST", "\"$mediaMtxHost\"")
+        buildConfigField("int", "MEDIA_MTX_PORT", mediaMtxPort.toString())
     }
 
     compileOptions {
@@ -25,6 +49,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {
@@ -57,8 +82,14 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(project(":core:network"))
+    implementation(project(":core:streaming"))
+    implementation(project(":core:grpc"))
+    implementation(project(":core:metadata"))
+    implementation(project(":core:media"))
+    implementation(project(":feature:camera"))
 
     implementation(libs.retrofit)
+    implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

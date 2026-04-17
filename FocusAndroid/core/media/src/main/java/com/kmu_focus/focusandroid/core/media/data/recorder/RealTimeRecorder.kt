@@ -93,6 +93,7 @@ class RealTimeRecorder(
         audioTrackSource: AudioTrackSource? = null,
         audioStartPositionUs: Long = 0L,
         onInputSurfaceReady: (Surface) -> Unit,
+        muxerFactory: VideoMuxerFactory = this.muxerFactory,
     ) {
         check(!isRecording) { "이미 녹화 중입니다" }
 

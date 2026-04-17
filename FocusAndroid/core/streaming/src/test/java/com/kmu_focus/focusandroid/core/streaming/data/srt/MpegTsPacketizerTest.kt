@@ -79,6 +79,19 @@ class MpegTsPacketizerTest {
     }
 
     @Test
+    fun `작은 PES 마지막 패킷은 adaptation field stuffing을 사용한다`() {
+        val aacFrame = ByteArray(16) { it.toByte() }
+
+        val packets = packetizer.packetizeAudio(aacFrame, 100_000L)
+        val lastPacket = packets.last()
+        val adaptationControl = (lastPacket[3].toInt() shr 4) and 0x03
+        val adaptationFieldLength = lastPacket[4].toInt() and 0xFF
+
+        assertEquals(0x03, adaptationControl)
+        assertTrue(adaptationFieldLength > 0)
+    }
+
+    @Test
     fun `continuity counter는 호출마다 증가한다`() {
         val nal1 = byteArrayOf(0x00, 0x00, 0x00, 0x01, 0x65, 0x01)
         val nal2 = byteArrayOf(0x00, 0x00, 0x00, 0x01, 0x65, 0x02)
@@ -90,5 +103,47 @@ class MpegTsPacketizerTest {
         val cc1 = packets1.first()[3].toInt() and 0x0F
         val cc2 = packets2.first()[3].toInt() and 0x0F
         assertEquals((cc1 + 1) % 16, cc2)
+    }
+
+    @Test
+    fun `비디오 패킷의 첫 TS 패킷에는 PCR이 포함된다`() {
+        val nalUnit = byteArrayOf(0x00, 0x00, 0x00, 0x01, 0x65, 0x01, 0x02, 0x03)
+        val ptsUs = 100_000L
+
+        val packets = packetizer.packetizeVideo(nalUnit, ptsUs)
+        val firstPacket = packets.first()
+
+        // adaptation_field_control = 11 (adaptation + payload)
+        val adaptationControl = (firstPacket[3].toInt() shr 4) and 0x03
+        assertEquals(0x03, adaptationControl)
+
+        // adaptation field flags의 PCR flag (bit 4) 확인
+        val adaptationFlags = firstPacket[5].toInt() and 0xFF
+        assertTrue("PCR flag가 설정되어야 한다", (adaptationFlags and 0x10) != 0)
+    }
+
+    @Test
+    fun `키프레임 비디오 패킷에는 random access indicator가 설정된다`() {
+        val nalUnit = byteArrayOf(0x00, 0x00, 0x00, 0x01, 0x65, 0x01, 0x02, 0x03)
+        val ptsUs = 100_000L
+
+        val packets = packetizer.packetizeVideo(nalUnit, ptsUs, isKeyFrame = true)
+        val firstPacket = packets.first()
+
+        // adaptation field flags의 random_access_indicator (bit 6) 확인
+        val adaptationFlags = firstPacket[5].toInt() and 0xFF
+        assertTrue("random access indicator가 설정되어야 한다", (adaptationFlags and 0x40) != 0)
+    }
+
+    @Test
+    fun `비키프레임 비디오 패킷에는 random access indicator가 설정되지 않는다`() {
+        val nalUnit = byteArrayOf(0x00, 0x00, 0x00, 0x01, 0x65, 0x01, 0x02, 0x03)
+        val ptsUs = 100_000L
+
+        val packets = packetizer.packetizeVideo(nalUnit, ptsUs, isKeyFrame = false)
+        val firstPacket = packets.first()
+
+        val adaptationFlags = firstPacket[5].toInt() and 0xFF
+        assertTrue("random access indicator가 설정되지 않아야 한다", (adaptationFlags and 0x40) == 0)
     }
 }
