@@ -54,7 +54,7 @@ import kotlinx.coroutines.delay
 private const val DEFAULT_AVATAR_ID = "avatar-a"
 private const val DEFAULT_BROADCAST_WIDTH = 1280
 private const val DEFAULT_BROADCAST_HEIGHT = 720
-private const val BROADCAST_START_DELAY_MS = 2_500L
+private const val BROADCAST_START_DELAY_MS = 2_000L
 private const val RECORDING_START_TIMEOUT_MS = 5_000L
 private const val START_API_TIMEOUT_MS = 12_000L
 
@@ -112,8 +112,6 @@ fun BroadcastCameraScreen(
         uiState.isPreparing,
         hasStartedRecorder,
         cameraUiState.isRecording,
-        cameraUiState.frameWidth,
-        cameraUiState.frameHeight,
         viewModel.currentMuxerFactory,
         uiState.broadcastId,
     ) {
@@ -123,13 +121,9 @@ fun BroadcastCameraScreen(
         }
 
         hasStartedRecorder = true
-        val (recordingWidth, recordingHeight) = resolveBroadcastRecordingSize(
-            frameWidth = cameraUiState.frameWidth,
-            frameHeight = cameraUiState.frameHeight,
-        )
         cameraViewModel.startBroadcastRecording(
-            width = recordingWidth,
-            height = recordingHeight,
+            width = DEFAULT_BROADCAST_WIDTH,
+            height = DEFAULT_BROADCAST_HEIGHT,
             muxerFactory = muxerFactory,
             metadataRepository = metadataRepository,
             sessionId = uiState.broadcastId,
@@ -655,14 +649,4 @@ private fun copyToClipboard(context: Context, value: String) {
     if (value.isBlank()) return
     val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboardManager.setPrimaryClip(ClipData.newPlainText("hlsUrl", value))
-}
-
-private fun resolveBroadcastRecordingSize(
-    frameWidth: Int,
-    frameHeight: Int,
-): Pair<Int, Int> {
-    if (frameWidth > 0 && frameHeight > 0) {
-        return frameWidth to frameHeight
-    }
-    return DEFAULT_BROADCAST_WIDTH to DEFAULT_BROADCAST_HEIGHT
 }

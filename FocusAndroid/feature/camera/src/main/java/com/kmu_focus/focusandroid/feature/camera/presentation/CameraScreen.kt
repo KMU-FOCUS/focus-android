@@ -224,6 +224,7 @@ fun CameraScreen(
                             previewWidth = width
                             previewHeight = height
                             previewAspectRatio = width.toFloat() / height.toFloat()
+                            viewModel.updatePreviewResolution(width, height)
                         }
                     },
                     onEncoderSurfaceReady = null,
