@@ -93,6 +93,26 @@ class VideoRendererRecordingPolicyTest {
         assertEquals(1, third)
     }
 
+    @Test
+    fun `프레임 타임스탬프가 뒤로 가면 분석 파이프라인 reset으로 판단한다`() {
+        val shouldReset = hasAnalysisTimestampReset(
+            lastFrameTimestampNs = 5_000_000_000L,
+            frameTimestampNs = 1_000_000L,
+        )
+
+        assertTrue(shouldReset)
+    }
+
+    @Test
+    fun `프레임 타임스탬프가 증가하면 분석 파이프라인 reset이 아니다`() {
+        val shouldReset = hasAnalysisTimestampReset(
+            lastFrameTimestampNs = 1_000_000L,
+            frameTimestampNs = 5_000_000_000L,
+        )
+
+        assertFalse(shouldReset)
+    }
+
     private fun processedFrameWithNoFaces(): ProcessedFrame = ProcessedFrame(
         faces = emptyList(),
         frameWidth = 1280,
