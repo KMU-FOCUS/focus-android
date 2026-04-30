@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.kmu_focus.focusandroid.core.ui.insets.focusSafeDrawingPadding
 import com.kmu_focus.focusandroid.core.grpc.data.repository.GrpcMetadataRepositoryImpl
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
@@ -224,8 +225,11 @@ fun BroadcastCameraScreen(
         Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(start = 22.dp, top = 18.dp),
+                .focusSafeDrawingPadding(
+                    sides = WindowInsetsSides.Top + WindowInsetsSides.Start,
+                    start = 22.dp,
+                    top = 18.dp,
+                ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (uiState.isBroadcasting) {
@@ -250,16 +254,22 @@ fun BroadcastCameraScreen(
         MenuButton(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(top = 22.dp, end = 22.dp),
+                .focusSafeDrawingPadding(
+                    sides = WindowInsetsSides.Top + WindowInsetsSides.End,
+                    top = 22.dp,
+                    end = 22.dp,
+                ),
             onClick = { isMenuPresented = !isMenuPresented },
         )
 
         FloatingBroadcastAction(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(end = 24.dp, bottom = 26.dp),
+                .focusSafeDrawingPadding(
+                    sides = WindowInsetsSides.Bottom + WindowInsetsSides.End,
+                    end = 24.dp,
+                    bottom = 26.dp,
+                ),
             label = when {
                 uiState.isBroadcasting -> "방송 종료하기"
                 uiState.isPreparing -> "준비 취소"

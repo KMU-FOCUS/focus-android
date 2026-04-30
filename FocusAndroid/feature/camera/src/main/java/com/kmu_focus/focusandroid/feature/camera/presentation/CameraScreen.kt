@@ -27,13 +27,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -68,6 +64,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.common.util.concurrent.ListenableFuture
+import com.kmu_focus.focusandroid.core.ui.insets.focusSafeDrawingPadding
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.core.media.data.gl.VideoGLSurfaceView
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
@@ -258,12 +255,11 @@ fun CameraScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Top + WindowInsetsSides.End,
-                        ),
+                    .focusSafeDrawingPadding(
+                        sides = WindowInsetsSides.Top + WindowInsetsSides.End,
+                        top = 12.dp,
+                        end = 12.dp,
                     )
-                    .padding(12.dp),
             ) {
                 IconButton(
                     onClick = { isControlMenuExpanded = !isControlMenuExpanded },
@@ -346,12 +342,11 @@ fun CameraScreen(
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Bottom + WindowInsetsSides.Start,
-                        ),
+                    .focusSafeDrawingPadding(
+                        sides = WindowInsetsSides.Bottom + WindowInsetsSides.Start,
+                        start = 12.dp,
+                        bottom = 12.dp,
                     )
-                    .padding(12.dp)
                     .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
