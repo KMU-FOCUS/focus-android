@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,31 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
 }
+
+val localProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+val chzzkClientId = localProperties
+    .getProperty("chzzkClientId", "")
+    .trim()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
+val chzzkRedirectUri = localProperties
+    .getProperty("chzzkRedirectUri", "")
+    .trim()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
+val chzzkAuthBaseUrl = localProperties
+    .getProperty("chzzkAuthBaseUrl", "https://chzzk.naver.com/account-interlock")
+    .trim()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 android {
     namespace = "com.kmu_focus.focusandroid.feature.account"
@@ -14,6 +41,9 @@ android {
         minSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+        buildConfigField("String", "CHZZK_CLIENT_ID", "\"$chzzkClientId\"")
+        buildConfigField("String", "CHZZK_REDIRECT_URI", "\"$chzzkRedirectUri\"")
+        buildConfigField("String", "CHZZK_AUTH_BASE_URL", "\"$chzzkAuthBaseUrl\"")
     }
 
     compileOptions {
@@ -25,6 +55,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {

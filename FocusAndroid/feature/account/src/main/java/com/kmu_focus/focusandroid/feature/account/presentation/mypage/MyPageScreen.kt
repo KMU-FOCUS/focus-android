@@ -138,6 +138,7 @@ fun MyPageScreen(
                 status = uiState.chzzkStatus,
                 isLoading = uiState.isChzzkLoading,
                 isActionInProgress = uiState.isChzzkActionInProgress,
+                isAwaitingConnection = uiState.isAwaitingChzzkConnection,
                 onConnect = viewModel::startChzzkConnect,
                 onDisconnect = viewModel::disconnectChzzk,
                 onRefresh = viewModel::refreshChzzkStatus,
@@ -229,6 +230,7 @@ private fun ChzzkConnectionCard(
     status: ChzzkConnectionStatus?,
     isLoading: Boolean,
     isActionInProgress: Boolean,
+    isAwaitingConnection: Boolean,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onRefresh: () -> Unit,
@@ -276,7 +278,11 @@ private fun ChzzkConnectionCard(
                 }
             } else {
                 Text(
-                    text = "치지직 연동이 아직 없습니다. 연동하면 방송 채널 상태를 함께 관리할 수 있습니다.",
+                    text = if (isAwaitingConnection) {
+                        "브라우저에서 치지직 로그인과 권한 승인을 마친 뒤 앱으로 돌아오세요. 복귀하면 연동 상태를 다시 확인합니다."
+                    } else {
+                        "치지직 연동이 아직 없습니다. 연동하면 방송 채널 상태를 함께 관리할 수 있습니다."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -291,7 +297,7 @@ private fun ChzzkConnectionCard(
                     enabled = !isLoading && !isActionInProgress,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("상태 새로고침")
+                    Text(if (isAwaitingConnection) "연동 확인" else "상태 새로고침")
                 }
 
                 if (status?.connected == true) {
@@ -308,7 +314,13 @@ private fun ChzzkConnectionCard(
                         enabled = !isActionInProgress,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text(if (isActionInProgress) "연동 준비 중..." else "치지직 연동")
+                        Text(
+                            when {
+                                isActionInProgress -> "연동 준비 중..."
+                                isAwaitingConnection -> "브라우저 다시 열기"
+                                else -> "치지직 연동"
+                            }
+                        )
                     }
                 }
             }

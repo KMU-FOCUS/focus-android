@@ -25,6 +25,7 @@ data class MyPageUiState(
     val chzzkStatus: ChzzkConnectionStatus? = null,
     val chzzkError: String? = null,
     val isChzzkActionInProgress: Boolean = false,
+    val isAwaitingChzzkConnection: Boolean = false,
     val pendingExternalUrl: String? = null,
     val isLoggingOut: Boolean = false,
     val isLoggedOut: Boolean = false,
@@ -138,6 +139,7 @@ class MyPageViewModel @Inject constructor(
                             isChzzkLoading = false,
                             chzzkStatus = status,
                             chzzkError = null,
+                            isAwaitingChzzkConnection = current.isAwaitingChzzkConnection && !status.connected,
                         )
                     }
                 }
@@ -171,6 +173,7 @@ class MyPageViewModel @Inject constructor(
                     _uiState.update { current ->
                         current.copy(
                             isChzzkActionInProgress = false,
+                            isAwaitingChzzkConnection = true,
                             pendingExternalUrl = url,
                             actionError = null,
                         )
@@ -180,6 +183,7 @@ class MyPageViewModel @Inject constructor(
                     _uiState.update { current ->
                         current.copy(
                             isChzzkActionInProgress = false,
+                            isAwaitingChzzkConnection = false,
                             pendingExternalUrl = null,
                             actionError = throwable.message ?: "치지직 연동 URL 조회 실패",
                         )
@@ -213,6 +217,7 @@ class MyPageViewModel @Inject constructor(
                     _uiState.update { current ->
                         current.copy(
                             isChzzkActionInProgress = false,
+                            isAwaitingChzzkConnection = false,
                             actionError = null,
                         )
                     }

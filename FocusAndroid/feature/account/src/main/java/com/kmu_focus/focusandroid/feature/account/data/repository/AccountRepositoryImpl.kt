@@ -1,6 +1,7 @@
 package com.kmu_focus.focusandroid.feature.account.data.repository
 
 import com.kmu_focus.focusandroid.core.network.domain.TokenStore
+import com.kmu_focus.focusandroid.feature.account.data.oauth.ChzzkOAuthConnectUrlValidator
 import com.kmu_focus.focusandroid.feature.account.data.remote.AccountApi
 import com.kmu_focus.focusandroid.feature.account.data.remote.dto.toEntity
 import com.kmu_focus.focusandroid.feature.account.domain.entity.ChzzkConnectionStatus
@@ -14,6 +15,7 @@ import retrofit2.Response
 class AccountRepositoryImpl @Inject constructor(
     private val accountApi: AccountApi,
     private val tokenStore: TokenStore,
+    private val chzzkOAuthConnectUrlValidator: ChzzkOAuthConnectUrlValidator,
 ) : AccountRepository {
 
     override suspend fun getCurrentUser(): Result<UserProfile> {
@@ -156,7 +158,7 @@ class AccountRepositoryImpl @Inject constructor(
 
             when {
                 response.isSuccessful && body?.success == true && data != null && data.authUrl.isNotBlank() -> {
-                    Result.success(data.authUrl)
+                    chzzkOAuthConnectUrlValidator.validate(data.authUrl)
                 }
 
                 response.isSuccessful -> {

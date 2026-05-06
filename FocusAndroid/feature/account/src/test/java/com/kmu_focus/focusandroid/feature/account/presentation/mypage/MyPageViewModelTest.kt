@@ -235,9 +235,52 @@ class MyPageViewModelTest {
         viewModel.startChzzkConnect()
 
         assertEquals("https://auth.example.com/chzzk", viewModel.uiState.value.pendingExternalUrl)
+        assertTrue(viewModel.uiState.value.isAwaitingChzzkConnection)
 
         viewModel.consumePendingExternalUrl()
         assertNull(viewModel.uiState.value.pendingExternalUrl)
+    }
+
+    @Test
+    fun `치지직 연결 상태가 확인되면 연동 대기 상태가 해제된다`() = runTest {
+        coEvery { getCurrentUserUseCase() } returns Result.success(
+            UserProfile(
+                id = "member-1",
+                name = "홍길동",
+                email = null,
+                profileImageUrl = null,
+            ),
+        )
+        coEvery { getChzzkConnectionStatusUseCase() } returnsMany listOf(
+            Result.success(ChzzkConnectionStatus(connected = false)),
+            Result.success(
+                ChzzkConnectionStatus(
+                    connected = true,
+                    channelId = "channel-1",
+                    channelName = "포커스 채널",
+                ),
+            ),
+        )
+        coEvery { getChzzkConnectUrlUseCase() } returns Result.success("https://auth.example.com/chzzk")
+        coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
+        coEvery { logoutUseCase() } returns Result.success(Unit)
+
+        viewModel = MyPageViewModel(
+            getCurrentUserUseCase,
+            getChzzkConnectionStatusUseCase,
+            getChzzkConnectUrlUseCase,
+            disconnectChzzkUseCase,
+            logoutUseCase,
+        )
+
+        viewModel.startChzzkConnect()
+        assertTrue(viewModel.uiState.value.isAwaitingChzzkConnection)
+
+        viewModel.refreshChzzkStatus()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.chzzkStatus?.connected == true)
+        assertFalse(state.isAwaitingChzzkConnection)
     }
 
     @Test
