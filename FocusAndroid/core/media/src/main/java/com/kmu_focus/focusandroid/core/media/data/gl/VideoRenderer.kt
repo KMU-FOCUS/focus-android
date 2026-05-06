@@ -5,9 +5,9 @@ import android.opengl.EGL14
 import android.opengl.GLES11Ext
 import android.opengl.GLES30
 import android.opengl.Matrix
-import android.util.Log
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Surface
 import androidx.annotation.VisibleForTesting
 import com.kmu_focus.focusandroid.core.media.data.recorder.EncoderThread
@@ -15,10 +15,24 @@ import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import java.nio.ByteBuffer
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.roundToInt
+
+private const val PRIVACY_REGION_PADDING_RATIO = 1.18f
+private const val PRIVACY_REGION_PADDING_PX = 6
+private const val PRIVACY_BLUR_LONG_EDGE_MAX = 20f
+private const val PRIVACY_BLUR_LONG_EDGE_MIN = 12f
+private const val PRIVACY_BLUR_LONG_EDGE_NEAR_PX = 140f
+private const val PRIVACY_BLUR_LONG_EDGE_FAR_PX = 320f
+private const val PRIVACY_BLUR_MIN_EDGE = 8
+private const val PRIVACY_BLUR_MAX_EDGE = 24
+private const val PRIVACY_KAWASE_OFFSET_NEAR = 1.5f
+private const val PRIVACY_KAWASE_OFFSET_FAR = 2.75f
 
 /**
  * 비동기 파이프라인: FBO 렌더링 → PBO readback → 검출 콜백 → (프리뷰/인코더 분기).
- * 인코더에는 분석이 완료된 동일 프레임 텍스처만 전달해 모자이크와 원본 프레임이 어긋나지 않게 유지한다.
+ * 인코더에는 분석이 완료된 동일 프레임 텍스처만 전달해 privacy blur와 원본 프레임이 어긋나지 않게 유지한다.
  */
 class VideoRenderer(
     private val onFrameCaptured: (ByteBuffer, Int, Int) -> ProcessedFrame,
@@ -35,7 +49,7 @@ class VideoRenderer(
     private val finalTexMatrix = FloatArray(16)
     private val rotationMatrix = FloatArray(16)
     private val program = OESTextureProgram()
-    private val mosaicProgram = MosaicProgram()
+    private val privacyBlurProgram = MosaicProgram()
     private val pboReader = PBOReader()
 
     // 프리뷰/분석용 더블 버퍼 FBO (PBO readback과 같은 프레임을 유지)
@@ -43,11 +57,18 @@ class VideoRenderer(
     private val previewSourceTextureIds = IntArray(2)
     private var previewSourceWriteIndex = 0
     private var previewDisplayTextureId = 0
+    private var isPreviewSynchronizedToAnalysis = false
 
     // 인코더용 더블 버퍼 FBO (EncoderThread 읽기와 쓰기 충돌 방지)
     private val encoderFboIds = IntArray(2)
     private val encoderFboTextureIds = IntArray(2)
     private var encoderFboWriteIndex = 0
+
+    // privacy blur용 저해상도 ping-pong FBO
+    private val privacyBlurFboIds = IntArray(2)
+    private val privacyBlurTextureIds = IntArray(2)
+    private var privacyBlurWidth = 0
+    private var privacyBlurHeight = 0
     private var viewWidth = 0
     private var viewHeight = 0
     private var renderContentScaleX = 1f
@@ -177,7 +198,7 @@ class VideoRenderer(
         surface = Surface(surfaceTexture)
 
         program.init()
-        mosaicProgram.init()
+        privacyBlurProgram.init()
 
         // GL 스레드 → 메인 스레드 전환
         val readySurface = surface!!
@@ -291,10 +312,19 @@ class VideoRenderer(
                 processedFrame = onFrameCaptured(analysisBuffer, viewWidth, viewHeight)
                 lastAnalysisTimestampNs = resolveAnalysisTimestampNs(frameTimestampNs)
             }
-            previewDisplayTextureId = currentPreviewTextureId
+            val previewSelection = resolvePreviewFrameSelection(
+                recordingEnabled = recordingEnabled,
+                processedFrame = processedFrame,
+                currentPreviewTextureId = currentPreviewTextureId,
+                analysisPreviewTextureId = analysisPreviewTextureId,
+                previousPreviewTextureId = previewDisplayTextureId,
+                wasSynchronized = isPreviewSynchronizedToAnalysis,
+            )
+            previewDisplayTextureId = previewSelection.textureId
+            isPreviewSynchronizedToAnalysis = previewSelection.isSynchronized
             previewSourceWriteIndex = analysisPreviewBufferIndex
 
-            // 4. 인코더용 FBO: 분석된 동일 프레임 텍스처에만 모자이크를 적용한다.
+            // 4. 인코더용 FBO: 저해상도 ROI + 2-pass Kawase blur를 합성한다.
             val frameForRecording = processedFrame
             if (recordingEnabled && frameForRecording != null) {
                 encoderFboWriteIndex = nextEncoderBufferIndex(encoderFboWriteIndex)
@@ -302,13 +332,49 @@ class VideoRenderer(
                 GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, encoderFboIds[encoderFboWriteIndex])
                 GLES30.glViewport(0, 0, viewWidth, viewHeight)
                 GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
-                mosaicProgram.draw(
-                    inputTexId = analysisPreviewTextureId,
-                    ellipses = ellipses,
-                    blockSize = MOSAIC_BLOCK_SIZE_PX,
-                    viewWidth = viewWidth,
-                    viewHeight = viewHeight
-                )
+                privacyBlurProgram.copyTextureRegion(inputTexId = analysisPreviewTextureId)
+                if (ellipses.isNotEmpty()) {
+                    val blurRegion = calculatePrivacyBlurRegion(ellipses, viewWidth, viewHeight)
+                    if (blurRegion != null) {
+                        ensurePrivacyBlurBuffers(blurRegion.blurWidth, blurRegion.blurHeight)
+
+                        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, privacyBlurFboIds[0])
+                        GLES30.glViewport(0, 0, blurRegion.blurWidth, blurRegion.blurHeight)
+                        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+                        privacyBlurProgram.copyTextureRegion(
+                            inputTexId = analysisPreviewTextureId,
+                            sourceRect = blurRegion.regionRect,
+                        )
+
+                        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, privacyBlurFboIds[1])
+                        GLES30.glViewport(0, 0, blurRegion.blurWidth, blurRegion.blurHeight)
+                        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+                        privacyBlurProgram.applyKawaseBlur(
+                            inputTexId = privacyBlurTextureIds[0],
+                            textureWidth = blurRegion.blurWidth,
+                            textureHeight = blurRegion.blurHeight,
+                            offsetPx = PRIVACY_KAWASE_OFFSET_NEAR,
+                        )
+
+                        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, privacyBlurFboIds[0])
+                        GLES30.glViewport(0, 0, blurRegion.blurWidth, blurRegion.blurHeight)
+                        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+                        privacyBlurProgram.applyKawaseBlur(
+                            inputTexId = privacyBlurTextureIds[1],
+                            textureWidth = blurRegion.blurWidth,
+                            textureHeight = blurRegion.blurHeight,
+                            offsetPx = PRIVACY_KAWASE_OFFSET_FAR,
+                        )
+
+                        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, encoderFboIds[encoderFboWriteIndex])
+                        GLES30.glViewport(0, 0, viewWidth, viewHeight)
+                        privacyBlurProgram.compositeBlurredRegion(
+                            inputTexId = privacyBlurTextureIds[0],
+                            ellipses = ellipses,
+                            regionRect = blurRegion.regionRect,
+                        )
+                    }
+                }
                 encoderTextureIdForSubmit = encoderFboTextureIds[encoderFboWriteIndex]
             }
 
@@ -344,7 +410,7 @@ class VideoRenderer(
         encoderThread.stop()
 
         pboReader.release()
-        mosaicProgram.release()
+        privacyBlurProgram.release()
         program.release()
         releaseFramebuffers()
         if (oesTextureId != 0) {
@@ -457,6 +523,7 @@ class VideoRenderer(
     private fun resetAnalysisPipeline() {
         pboReader.resetPipeline()
         previewSourceWriteIndex = 0
+        isPreviewSynchronizedToAnalysis = false
         lastAnalysisTimestampNs = Long.MIN_VALUE
         lastFrameTimestampNs = Long.MIN_VALUE
     }
@@ -466,6 +533,7 @@ class VideoRenderer(
         lastFrameTimestampNs = Long.MIN_VALUE
         previewDisplayTextureId = 0
         previewSourceWriteIndex = 0
+        isPreviewSynchronizedToAnalysis = false
     }
 
     private fun rememberFrameTimestamp(frameTimestampNs: Long) {
@@ -521,6 +589,47 @@ class VideoRenderer(
         return finalTexMatrix
     }
 
+    private fun ensurePrivacyBlurBuffers(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        if (privacyBlurWidth == width && privacyBlurHeight == height && privacyBlurTextureIds.all { it != 0 }) {
+            return
+        }
+
+        releasePrivacyBlurBuffers()
+
+        GLES30.glGenTextures(2, privacyBlurTextureIds, 0)
+        GLES30.glGenFramebuffers(2, privacyBlurFboIds, 0)
+        for (i in 0..1) {
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, privacyBlurTextureIds[i])
+            GLES30.glTexImage2D(
+                GLES30.GL_TEXTURE_2D,
+                0,
+                GLES30.GL_RGBA,
+                width,
+                height,
+                0,
+                GLES30.GL_RGBA,
+                GLES30.GL_UNSIGNED_BYTE,
+                null,
+            )
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, privacyBlurFboIds[i])
+            GLES30.glFramebufferTexture2D(
+                GLES30.GL_FRAMEBUFFER,
+                GLES30.GL_COLOR_ATTACHMENT0,
+                GLES30.GL_TEXTURE_2D,
+                privacyBlurTextureIds[i],
+                0,
+            )
+        }
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+        privacyBlurWidth = width
+        privacyBlurHeight = height
+    }
+
     private fun releaseFramebuffers() {
         if (previewSourceFboIds[0] != 0 || previewSourceFboIds[1] != 0) {
             GLES30.glDeleteFramebuffers(2, previewSourceFboIds, 0)
@@ -542,11 +651,26 @@ class VideoRenderer(
             encoderFboTextureIds[0] = 0
             encoderFboTextureIds[1] = 0
         }
+        releasePrivacyBlurBuffers()
+    }
+
+    private fun releasePrivacyBlurBuffers() {
+        if (privacyBlurFboIds[0] != 0 || privacyBlurFboIds[1] != 0) {
+            GLES30.glDeleteFramebuffers(2, privacyBlurFboIds, 0)
+            privacyBlurFboIds[0] = 0
+            privacyBlurFboIds[1] = 0
+        }
+        if (privacyBlurTextureIds[0] != 0 || privacyBlurTextureIds[1] != 0) {
+            GLES30.glDeleteTextures(2, privacyBlurTextureIds, 0)
+            privacyBlurTextureIds[0] = 0
+            privacyBlurTextureIds[1] = 0
+        }
+        privacyBlurWidth = 0
+        privacyBlurHeight = 0
     }
 
     private companion object {
         private const val TAG = "VideoRenderer"
-        private const val MOSAIC_BLOCK_SIZE_PX = 16f
         private const val ANALYSIS_INTERVAL_NS = 50_000_000L
 
         private fun normalizeRotationDegrees(degrees: Int): Int {
@@ -574,3 +698,135 @@ fun hasAnalysisTimestampReset(lastFrameTimestampNs: Long, frameTimestampNs: Long
 
 @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
 fun nextEncoderBufferIndex(currentIndex: Int): Int = 1 - currentIndex
+
+@VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+data class PreviewFrameSelection(
+    val textureId: Int,
+    val isSynchronized: Boolean,
+)
+
+@VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+fun resolvePreviewFrameSelection(
+    recordingEnabled: Boolean,
+    processedFrame: ProcessedFrame?,
+    currentPreviewTextureId: Int,
+    analysisPreviewTextureId: Int,
+    previousPreviewTextureId: Int,
+    wasSynchronized: Boolean,
+): PreviewFrameSelection {
+    if (!recordingEnabled) {
+        return PreviewFrameSelection(
+            textureId = currentPreviewTextureId,
+            isSynchronized = false,
+        )
+    }
+    if (processedFrame != null && analysisPreviewTextureId != 0) {
+        return PreviewFrameSelection(
+            textureId = analysisPreviewTextureId,
+            isSynchronized = true,
+        )
+    }
+    if (wasSynchronized && previousPreviewTextureId != 0) {
+        return PreviewFrameSelection(
+            textureId = previousPreviewTextureId,
+            isSynchronized = true,
+        )
+    }
+    return PreviewFrameSelection(
+        textureId = currentPreviewTextureId,
+        isSynchronized = false,
+    )
+}
+
+@VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+data class PrivacyBlurRegion(
+    val regionRect: UvRect,
+    val blurWidth: Int,
+    val blurHeight: Int,
+)
+
+@VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+fun calculatePrivacyBlurRegion(
+    ellipses: List<EllipseParams>,
+    viewWidth: Int,
+    viewHeight: Int,
+): PrivacyBlurRegion? {
+    if (ellipses.isEmpty() || viewWidth <= 0 || viewHeight <= 0) return null
+
+    var leftPx = viewWidth
+    var topPx = viewHeight
+    var rightPx = 0
+    var bottomPx = 0
+
+    ellipses.forEach { ellipse ->
+        val paddedRadiusX = ellipse.radiusX * PRIVACY_REGION_PADDING_RATIO
+        val paddedRadiusY = ellipse.radiusY * PRIVACY_REGION_PADDING_RATIO
+        val candidateLeft = floor((ellipse.centerX - paddedRadiusX) * viewWidth).toInt() - PRIVACY_REGION_PADDING_PX
+        val candidateTop = floor((ellipse.centerY - paddedRadiusY) * viewHeight).toInt() - PRIVACY_REGION_PADDING_PX
+        val candidateRight = ceil((ellipse.centerX + paddedRadiusX) * viewWidth).toInt() + PRIVACY_REGION_PADDING_PX
+        val candidateBottom = ceil((ellipse.centerY + paddedRadiusY) * viewHeight).toInt() + PRIVACY_REGION_PADDING_PX
+
+        leftPx = minOf(leftPx, candidateLeft)
+        topPx = minOf(topPx, candidateTop)
+        rightPx = maxOf(rightPx, candidateRight)
+        bottomPx = maxOf(bottomPx, candidateBottom)
+    }
+
+    val clampedLeft = leftPx.coerceIn(0, viewWidth - 1)
+    val clampedTop = topPx.coerceIn(0, viewHeight - 1)
+    val clampedRight = rightPx.coerceIn(clampedLeft + 1, viewWidth)
+    val clampedBottom = bottomPx.coerceIn(clampedTop + 1, viewHeight)
+    val regionWidth = (clampedRight - clampedLeft).coerceAtLeast(1)
+    val regionHeight = (clampedBottom - clampedTop).coerceAtLeast(1)
+    val blurSize = resolvePrivacyBlurTextureSize(regionWidth, regionHeight)
+
+    return PrivacyBlurRegion(
+        regionRect = UvRect(
+            minX = clampedLeft / viewWidth.toFloat(),
+            minY = clampedTop / viewHeight.toFloat(),
+            maxX = clampedRight / viewWidth.toFloat(),
+            maxY = clampedBottom / viewHeight.toFloat(),
+        ),
+        blurWidth = blurSize.first,
+        blurHeight = blurSize.second,
+    )
+}
+
+@VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+fun resolvePrivacyBlurTextureSize(
+    regionWidth: Int,
+    regionHeight: Int,
+): Pair<Int, Int> {
+    if (regionWidth <= 0 || regionHeight <= 0) return PRIVACY_BLUR_MIN_EDGE to PRIVACY_BLUR_MIN_EDGE
+
+    val longEdge = maxOf(regionWidth, regionHeight).toFloat()
+    val scale = smoothstep(
+        edge0 = PRIVACY_BLUR_LONG_EDGE_NEAR_PX,
+        edge1 = PRIVACY_BLUR_LONG_EDGE_FAR_PX,
+        value = longEdge,
+    )
+    val targetLongEdge = lerp(
+        start = PRIVACY_BLUR_LONG_EDGE_MAX,
+        end = PRIVACY_BLUR_LONG_EDGE_MIN,
+        t = scale,
+    )
+    val downsampleScale = targetLongEdge / longEdge
+    val blurWidth = quantizePrivacyBlurEdge((regionWidth * downsampleScale).roundToInt())
+    val blurHeight = quantizePrivacyBlurEdge((regionHeight * downsampleScale).roundToInt())
+    return blurWidth to blurHeight
+}
+
+private fun quantizePrivacyBlurEdge(value: Int): Int {
+    val clamped = value.coerceIn(PRIVACY_BLUR_MIN_EDGE, PRIVACY_BLUR_MAX_EDGE)
+    return if (clamped % 2 == 0) clamped else clamped + 1
+}
+
+private fun lerp(start: Float, end: Float, t: Float): Float {
+    return start + (end - start) * t.coerceIn(0f, 1f)
+}
+
+private fun smoothstep(edge0: Float, edge1: Float, value: Float): Float {
+    if (edge0 == edge1) return 1f
+    val t = ((value - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}

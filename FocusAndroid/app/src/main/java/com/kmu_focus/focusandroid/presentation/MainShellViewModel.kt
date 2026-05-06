@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.update
 
 enum class MainTab {
     BROADCAST,
+    VIDEO,
     PROFILE,
 }
 

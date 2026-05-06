@@ -42,6 +42,20 @@ class MainShellViewModelTest {
     }
 
     @Test
+    fun `동영상 탭 선택 시 동영상 탭으로 전환된다`() {
+        viewModel.selectTab(MainTab.VIDEO)
+
+        val state = viewModel.uiState.value
+
+        assertEquals(MainTab.VIDEO, state.selectedTab)
+        assertEquals(
+            MainShellDestination.Tab(MainTab.VIDEO),
+            state.currentDestination,
+        )
+        assertTrue(state.isBottomBarVisible)
+    }
+
+    @Test
     fun `방송 생성 화면으로 이동하면 bottom bar가 숨겨진다`() {
         viewModel.openBroadcastCreate()
 

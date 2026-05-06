@@ -22,6 +22,7 @@ import com.kmu_focus.focusandroid.feature.account.presentation.mypage.MyPageScre
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.camera.BroadcastCameraScreen
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.create.CreateBroadcastScreen
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.list.BroadcastListScreen
+import com.kmu_focus.focusandroid.feature.video.presentation.main.MainScreen
 
 @Composable
 fun MainShellScreen(
@@ -46,6 +47,13 @@ fun MainShellScreen(
                             )
                         },
                         label = { Text("방송") },
+                        alwaysShowLabel = false,
+                    )
+                    NavigationBarItem(
+                        selected = uiState.selectedTab == MainTab.VIDEO,
+                        onClick = { viewModel.selectTab(MainTab.VIDEO) },
+                        icon = { Text("V") },
+                        label = { Text("동영상") },
                         alwaysShowLabel = false,
                     )
                     NavigationBarItem(
@@ -86,6 +94,10 @@ fun MainShellScreen(
                                     ).show()
                                 },
                             )
+                        }
+
+                        MainTab.VIDEO -> {
+                            MainScreen()
                         }
 
                         MainTab.PROFILE -> {

@@ -1,9 +1,17 @@
 package com.kmu_focus.focusandroid.feature.auth.presentation
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,6 +45,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun AuthScreen(
     onLoginSuccess: () -> Unit,
+    onContinueWithoutLogin: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
@@ -59,6 +68,7 @@ fun AuthScreen(
             AuthIntroScreen(
                 message = "카카오 로그인 후 방송 준비와 분석 흐름을 이어서 사용할 수 있습니다.",
                 onClick = { viewModel.kakaoLogin(context) },
+                onContinueWithoutLogin = onContinueWithoutLogin,
                 modifier = modifier,
             )
         }
@@ -77,6 +87,7 @@ fun AuthScreen(
             AuthIntroScreen(
                 message = state.message,
                 onClick = { viewModel.kakaoLogin(context) },
+                onContinueWithoutLogin = onContinueWithoutLogin,
                 modifier = modifier,
             )
         }
@@ -126,6 +137,7 @@ private fun IntroLoadingScreen(
 private fun AuthIntroScreen(
     message: String,
     onClick: () -> Unit,
+    onContinueWithoutLogin: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val slides = remember {
@@ -145,6 +157,7 @@ private fun AuthIntroScreen(
         )
     }
     var selectedSlide by rememberSaveable { mutableIntStateOf(0) }
+    val scrollState = rememberScrollState()
 
     LaunchedEffect(slides.size) {
         while (true) {
@@ -184,8 +197,14 @@ private fun AuthIntroScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Top + WindowInsetsSides.Bottom,
+                    ),
+                )
+                .verticalScroll(scrollState)
                 .padding(horizontal = 24.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(28.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -256,7 +275,10 @@ private fun AuthIntroScreen(
                 PageIndicator(selectedPage = selectedSlide, pageCount = slides.size)
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
@@ -266,6 +288,12 @@ private fun AuthIntroScreen(
                     onClick = onClick,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (onContinueWithoutLogin != null) {
+                    GuestVideoButton(
+                        onClick = onContinueWithoutLogin,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }
@@ -324,6 +352,34 @@ private fun KakaoLoginButton(
                     fontWeight = FontWeight.Bold,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun GuestVideoButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(58.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.96f),
+        contentColor = Color(0xFF0C4A6E),
+        border = BorderStroke(1.dp, Color(0xFFB6D7E8)),
+        shadowElevation = 4.dp,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "로그인 없이 동영상 처리",
+                color = Color(0xFF0C4A6E),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }
