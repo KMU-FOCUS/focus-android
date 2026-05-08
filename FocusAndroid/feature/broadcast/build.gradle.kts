@@ -86,6 +86,7 @@ dependencies {
     implementation(project(":core:grpc"))
     implementation(project(":core:metadata"))
     implementation(project(":core:media"))
+    implementation(project(":core:ui"))
     implementation(project(":feature:camera"))
 
     implementation(libs.retrofit)

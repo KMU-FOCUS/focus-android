@@ -46,7 +46,7 @@ class ServerAuthRepositoryImpl @Inject constructor(
                 }
 
                 else -> {
-                    Result.failure(AuthError.Network(response.extractErrorMessage()))
+                    Result.failure(AuthError.Network(response.extractErrorMessage("서버 로그인 실패")))
                 }
             }
         } catch (exception: IOException) {
@@ -106,10 +106,10 @@ class ServerAuthRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun Response<*>.extractErrorMessage(): String {
+    private fun Response<*>.extractErrorMessage(defaultMessage: String): String {
         return errorBody()?.string()?.takeIf { it.isNotBlank() }
             ?: message().takeIf { it.isNotBlank() }
-            ?: "서버 로그인 실패"
+            ?: defaultMessage
     }
 
     private fun isExpiredJwt(token: String): Boolean {

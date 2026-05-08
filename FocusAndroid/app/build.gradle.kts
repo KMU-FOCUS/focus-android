@@ -76,6 +76,7 @@ dependencies {
     implementation(project(":feature:video"))
     implementation(project(":feature:camera"))
     implementation(project(":feature:auth"))
+    implementation(project(":feature:account"))
     implementation(project(":feature:broadcast"))
     implementation(project(":core:ai"))
     implementation(project(":core:grpc"))
@@ -83,6 +84,7 @@ dependencies {
     implementation(project(":core:metadata"))
     implementation(project(":core:network"))
     implementation(project(":core:streaming"))
+    implementation(project(":core:ui"))
 
     // Core & UI
     implementation(libs.androidx.core.ktx)
