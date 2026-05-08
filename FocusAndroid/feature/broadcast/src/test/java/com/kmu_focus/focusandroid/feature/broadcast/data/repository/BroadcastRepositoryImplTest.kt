@@ -9,6 +9,7 @@ import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.StartBroadca
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.UpdateBroadcastRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastStatus
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -54,6 +55,9 @@ class BroadcastRepositoryImplTest {
         assertEquals("broadcast-1", broadcast.broadcastId)
         assertEquals(BroadcastStatus.READY, broadcast.status)
         assertEquals("stream-key-abc", broadcast.streamKey)
+        coVerify(exactly = 1) {
+            api.createBroadcast(CreateBroadcastRequestDto(title = "테스트 방송"))
+        }
     }
 
     @Test
@@ -73,6 +77,8 @@ class BroadcastRepositoryImplTest {
             status = "ON_AIR",
             hlsUrl = "https://cdn.example.com/live/broadcast-1.m3u8",
             startedAt = "2026-04-09T12:00:00",
+            liveStatus = "ON_AIR",
+            watchUrl = "https://chzzk.naver.com/live/broadcast-1",
         )
         coEvery { api.startBroadcast(any(), any()) } returns Response.success(
             ApiResponse(success = true, message = "성공", data = onAirDto),
@@ -82,7 +88,12 @@ class BroadcastRepositoryImplTest {
 
         assertTrue(result.isSuccess)
         assertEquals(BroadcastStatus.ON_AIR, result.getOrThrow().status)
+        assertEquals(BroadcastStatus.ON_AIR, result.getOrThrow().liveStatus)
         assertEquals("https://cdn.example.com/live/broadcast-1.m3u8", result.getOrThrow().hlsUrl)
+        assertEquals("https://chzzk.naver.com/live/broadcast-1", result.getOrThrow().watchUrl)
+        coVerify(exactly = 1) {
+            api.startBroadcast("broadcast-1", StartBroadcastRequestDto(avatarId = "avatar-a"))
+        }
     }
 
     @Test

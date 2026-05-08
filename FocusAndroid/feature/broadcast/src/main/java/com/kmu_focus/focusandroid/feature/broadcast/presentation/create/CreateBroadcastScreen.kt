@@ -131,9 +131,25 @@ fun CreateBroadcastScreen(
                     )
                     BroadcastMetaRow(label = "방송 ID", value = broadcast.broadcastId)
                     BroadcastMetaRow(label = "상태", value = broadcast.status.name)
+                    BroadcastMetaRow(label = "라이브 상태", value = broadcast.liveStatus.name)
+                    broadcast.platform?.let { platform ->
+                        BroadcastMetaRow(label = "플랫폼", value = platform)
+                    }
+                    broadcast.outputMode?.let { outputMode ->
+                        BroadcastMetaRow(label = "출력 모드", value = outputMode)
+                    }
                     BroadcastMetaRow(label = "스트림 키", value = broadcast.streamKey)
+                    broadcast.platformChannelId?.let { channelId ->
+                        BroadcastMetaRow(label = "플랫폼 채널 ID", value = channelId)
+                    }
+                    broadcast.watchUrl?.let { watchUrl ->
+                        BroadcastMetaRow(label = "시청 URL", value = watchUrl)
+                    }
                     broadcast.hlsUrl?.let { hlsUrl ->
                         BroadcastMetaRow(label = "HLS", value = hlsUrl)
+                    }
+                    broadcast.lastStartFailureReason?.let { reason ->
+                        BroadcastMetaRow(label = "마지막 시작 실패 사유", value = reason)
                     }
                     Button(
                         onClick = {

@@ -36,7 +36,7 @@ fun BroadcastListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val totalCount = uiState.broadcasts.size
-    val onAirCount = uiState.broadcasts.count { it.status == BroadcastStatus.ON_AIR }
+    val onAirCount = uiState.broadcasts.count { it.liveStatus == BroadcastStatus.ON_AIR }
 
     Box(
         modifier = Modifier
@@ -203,11 +203,13 @@ private fun BroadcastItemCard(
     onDelete: () -> Unit,
     onNavigateToBroadcast: () -> Unit,
 ) {
+    val displayStatus = broadcast.liveStatus
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(
-                enabled = broadcast.status == BroadcastStatus.ON_AIR,
+                enabled = displayStatus == BroadcastStatus.ON_AIR,
                 onClick = onNavigateToBroadcast,
             ),
         colors = CardDefaults.cardColors(
@@ -239,22 +241,54 @@ private fun BroadcastItemCard(
                     )
                 }
                 SpacerWidth()
-                StatusBadge(status = broadcast.status)
+                StatusBadge(status = displayStatus)
             }
 
-            broadcast.hlsUrl?.let { hlsUrl ->
+            broadcast.watchUrl?.let { watchUrl ->
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
                     Text(
-                        text = hlsUrl,
+                        text = watchUrl,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            broadcast.hlsUrl?.let { hlsUrl ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                ) {
+                    Text(
+                        text = hlsUrl,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            broadcast.lastStartFailureReason?.takeIf { it.isNotBlank() }?.let { reason ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.08f),
+                ) {
+                    Text(
+                        text = reason,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
@@ -267,9 +301,9 @@ private fun BroadcastItemCard(
                 Button(
                     onClick = onNavigateToBroadcast,
                     modifier = Modifier.weight(1f),
-                    enabled = broadcast.status == BroadcastStatus.ON_AIR,
+                    enabled = displayStatus == BroadcastStatus.ON_AIR,
                 ) {
-                    Text(if (broadcast.status == BroadcastStatus.ON_AIR) "방송 입장" else "대기 중")
+                    Text(if (displayStatus == BroadcastStatus.ON_AIR) "방송 입장" else "대기 중")
                 }
                 OutlinedButton(
                     onClick = onDelete,

@@ -33,6 +33,8 @@ class BroadcastMapperTest {
         assertNull(entity.hlsUrl)
         assertNull(entity.startedAt)
         assertNull(entity.endedAt)
+        assertEquals(BroadcastStatus.READY, entity.liveStatus)
+        assertNull(entity.watchUrl)
     }
 
     @Test
@@ -54,6 +56,37 @@ class BroadcastMapperTest {
         assertEquals(BroadcastStatus.ON_AIR, entity.status)
         assertEquals("https://cdn.example.com/live/broadcast-1.m3u8", entity.hlsUrl)
         assertEquals("2026-04-09T12:00:00", entity.startedAt)
+    }
+
+    @Test
+    fun `추가 필드가 있으면 함께 매핑된다`() {
+        val dto = BroadcastResponseDto(
+            broadcastId = "broadcast-1",
+            title = "치지직 방송",
+            memberName = "홍길동",
+            memberId = "member-1",
+            status = "READY",
+            streamKey = "stream-key-abc",
+            hlsUrl = "https://cdn.example.com/live/broadcast-1.m3u8",
+            startedAt = null,
+            endedAt = null,
+            liveStatus = "ON_AIR",
+            platform = "CHZZK",
+            outputMode = "CHZZK_RTMP",
+            platformChannelId = "channel-1",
+            watchUrl = "https://chzzk.naver.com/live/channel-1",
+            lastStartFailureReason = "worker timeout",
+        )
+
+        val entity = dto.toEntity()
+
+        assertEquals(BroadcastStatus.READY, entity.status)
+        assertEquals(BroadcastStatus.ON_AIR, entity.liveStatus)
+        assertEquals("CHZZK", entity.platform)
+        assertEquals("CHZZK_RTMP", entity.outputMode)
+        assertEquals("channel-1", entity.platformChannelId)
+        assertEquals("https://chzzk.naver.com/live/channel-1", entity.watchUrl)
+        assertEquals("worker timeout", entity.lastStartFailureReason)
     }
 
     @Test
