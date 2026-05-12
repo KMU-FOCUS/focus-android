@@ -130,4 +130,11 @@ class CameraAnalysisUseCaseTest {
 
         verify(exactly = 1) { repository.clearProcessingThreadCache() }
     }
+
+    @Test
+    fun `resetSessionState 호출 시 repository에 위임됨`() {
+        useCase.resetSessionState()
+
+        verify(exactly = 1) { repository.resetSessionState() }
+    }
 }

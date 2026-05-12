@@ -328,6 +328,18 @@ class CameraViewModel @Inject constructor(
         cameraAnalysisUseCase.clearProcessingThreadCache()
     }
 
+    fun resetSessionState() {
+        manualOwnerTrackIds.clear()
+        pendingOwnerRegistrationTrackId = null
+        _uiState.value = _uiState.value.copy(
+            detectedFaces = emptyList(),
+            faceLabels = emptyList(),
+            trackingIds = emptyList(),
+            registeredOwnerThumbnails = emptyList(),
+        )
+        cameraAnalysisUseCase.resetSessionState()
+    }
+
     override fun onCleared() {
         try {
             stopRecordingInternal(saveRecordingFile = false, forceSynchronous = true)

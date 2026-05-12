@@ -40,6 +40,10 @@ class CameraAnalysisUseCase @Inject constructor(
         cameraAnalysisRepository.clearProcessingThreadCache()
     }
 
+    fun resetSessionState() {
+        cameraAnalysisRepository.resetSessionState()
+    }
+
     fun startMetadataSession() {
         cameraAnalysisRepository.startMetadataSession()
     }

@@ -548,4 +548,33 @@ class CameraViewModelTest {
 
         verify(exactly = 1) { cameraAnalysisUseCase.clearProcessingThreadCache() }
     }
+
+    @Test
+    fun `resetSessionState 호출 시 owner 관련 UI 상태가 초기화되고 UseCase가 호출됨`() = runTest {
+        val buffer = createTestBuffer()
+        val frame = ProcessedFrame(
+            faces = listOf(DetectedFace(10, 20, 100, 100, 0.9f)),
+            frameWidth = 640,
+            frameHeight = 480,
+            timestampMs = 0L,
+            trackingIds = listOf(7),
+            faceLabels = listOf(true),
+        )
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returns frame
+
+        viewModel.startCamera()
+        advanceUntilIdle()
+        viewModel.startDetection()
+        viewModel.processFrameSync(buffer, 640, 480)
+
+        assertFalse(viewModel.uiState.value.detectedFaces.isEmpty())
+
+        viewModel.resetSessionState()
+
+        assertTrue(viewModel.uiState.value.detectedFaces.isEmpty())
+        assertTrue(viewModel.uiState.value.faceLabels.isEmpty())
+        assertTrue(viewModel.uiState.value.trackingIds.isEmpty())
+        assertTrue(viewModel.uiState.value.registeredOwnerThumbnails.isEmpty())
+        verify(exactly = 1) { cameraAnalysisUseCase.resetSessionState() }
+    }
 }

@@ -96,6 +96,10 @@ fun BroadcastCameraScreen(
         )
     }
 
+    LaunchedEffect(broadcastId) {
+        cameraViewModel.resetSessionState()
+    }
+
     LaunchedEffect(cameraUiState.isCameraActive) {
         if (cameraUiState.isCameraActive && !cameraUiState.isDetecting) {
             cameraViewModel.startDetection()

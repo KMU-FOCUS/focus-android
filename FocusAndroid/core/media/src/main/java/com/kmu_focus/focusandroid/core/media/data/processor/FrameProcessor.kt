@@ -150,4 +150,10 @@ class FrameProcessor @Inject constructor(
             bitmap.recycle()
         }
     }
+
+    fun resetSessionState() {
+        faceTracker.reset()
+        trackLabelState.clear()
+        clearThreadLocalCache()
+    }
 }

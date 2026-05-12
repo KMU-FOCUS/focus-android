@@ -23,6 +23,8 @@ interface CameraAnalysisRepository {
 
     fun clearProcessingThreadCache()
 
+    fun resetSessionState()
+
     fun startMetadataSession()
 
     fun startMetadataSession(repository: MetadataRepository)

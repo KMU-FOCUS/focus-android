@@ -144,6 +144,11 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         frameProcessor.clearThreadLocalCache()
     }
 
+    override fun resetSessionState() {
+        ownerAdder.clearOwners()
+        frameProcessor.resetSessionState()
+    }
+
     override fun startMetadataSession() {
         beginMetadataSession(repository = null, sessionId = null)
     }
