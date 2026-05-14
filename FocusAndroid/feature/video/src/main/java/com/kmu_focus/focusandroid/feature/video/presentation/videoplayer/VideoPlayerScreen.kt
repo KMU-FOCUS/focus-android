@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import com.kmu_focus.focusandroid.core.media.data.gl.VideoGLSurfaceView
@@ -76,6 +78,20 @@ fun VideoPlayerScreen(
         viewModel.loadVideo(videoUri)
     }
 
+    DisposableEffect(exoPlayer, viewModel) {
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    viewModel.updateSourceVideoSize(videoSize.width, videoSize.height)
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+        }
+    }
+
     LaunchedEffect(uiState.lastRegisteredOwnerImageUri) {
         if (uiState.lastRegisteredOwnerImageUri == null) return@LaunchedEffect
         Toast.makeText(context, "등록 얼굴 이미지를 임시 저장했습니다.", Toast.LENGTH_SHORT).show()
@@ -101,7 +117,11 @@ fun VideoPlayerScreen(
             ExoPlayerGLView(
                 exoPlayer = exoPlayer,
                 onFrameCaptured = { buffer, width, height ->
-                    viewModel.processFrameSync(buffer, width, height)
+                    viewModel.processFrameSync(
+                        buffer = buffer,
+                        width = width,
+                        height = height,
+                    )
                 },
                 onRendererReleased = {
                     viewModel.clearProcessingThreadCache()

@@ -124,6 +124,10 @@ class FrameProcessor @Inject constructor(
         return process(bitmap, timestampMs, frameIndex)
     }
 
+    fun markTrackAsOwner(trackId: Int) {
+        trackLabelState.markOwner(trackId)
+    }
+
     private fun obtainReusableFrameBitmap(width: Int, height: Int): Bitmap {
         val safeWidth = width.coerceAtLeast(1)
         val safeHeight = height.coerceAtLeast(1)

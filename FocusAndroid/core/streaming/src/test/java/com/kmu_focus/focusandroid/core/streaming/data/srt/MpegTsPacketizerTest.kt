@@ -68,6 +68,20 @@ class MpegTsPacketizerTest {
     }
 
     @Test
+    fun `AAC 첫 TS 패킷에는 adaptation field와 random access indicator가 설정된다`() {
+        val aacFrame = ByteArray(128) { it.toByte() }
+
+        val packets = packetizer.packetizeAudio(aacFrame, 100_000L)
+        val firstPacket = packets.first()
+
+        val adaptationControl = (firstPacket[3].toInt() shr 4) and 0x03
+        val adaptationFlags = firstPacket[5].toInt() and 0xFF
+
+        assertEquals(0x03, adaptationControl)
+        assertTrue("random access indicator가 설정되어야 한다", (adaptationFlags and 0x40) != 0)
+    }
+
+    @Test
     fun `큰 NAL 유닛은 여러 TS 패킷으로 분할된다`() {
         // 188 - 4(header) - 약20(PES header) = ~164 바이트 payload per packet
         val largeNal = ByteArray(500) { it.toByte() }

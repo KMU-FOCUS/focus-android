@@ -165,6 +165,7 @@ class SrtVideoMuxerTest {
         every { audioFormat.getString(MediaFormat.KEY_MIME) } returns MediaFormat.MIMETYPE_AUDIO_AAC
         every { audioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) } returns 44100
         every { audioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) } returns 2
+        every { audioFormat.getByteBuffer("csd-0") } returns ByteBuffer.wrap(byteArrayOf(0x12, 0x10))
         val trackIndex = muxer.addTrack(audioFormat)
 
         every { srtSocket.connect(any(), any(), any()) } returns true
@@ -184,5 +185,32 @@ class SrtVideoMuxerTest {
         assertTrue(payload.size >= 7)
         assertTrue((payload[0].toInt() and 0xFF) == 0xFF)
         assertTrue((payload[1].toInt() and 0xF0) == 0xF0)
+    }
+
+    @Test
+    fun `AAC csd-0 설정이 있으면 ADTS 헤더도 해당 값으로 생성된다`() {
+        val audioFormat = mockk<MediaFormat>(relaxed = true)
+        every { audioFormat.getString(MediaFormat.KEY_MIME) } returns MediaFormat.MIMETYPE_AUDIO_AAC
+        every { audioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) } returns 44100
+        every { audioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) } returns 2
+        every { audioFormat.getByteBuffer("csd-0") } returns ByteBuffer.wrap(byteArrayOf(0x11, 0x88.toByte()))
+        val trackIndex = muxer.addTrack(audioFormat)
+
+        every { srtSocket.connect(any(), any(), any()) } returns true
+        muxer.start()
+
+        val audioPayloadSlot = slot<ByteArray>()
+        every { packetizer.packetizeAudio(capture(audioPayloadSlot), any()) } returns listOf(ByteArray(188))
+
+        val rawAac = ByteBuffer.wrap(byteArrayOf(0x11, 0x22, 0x33, 0x44))
+        val info = MediaCodec.BufferInfo().apply {
+            set(0, rawAac.remaining(), 100_000L, 0)
+        }
+
+        muxer.writeSampleData(trackIndex, rawAac, info)
+
+        val payload = audioPayloadSlot.captured
+        assertTrue((payload[2].toInt() and 0x3C) == 0x0C) // sampleRateIndex = 3 (48kHz)
+        assertTrue((payload[3].toInt() and 0xC0) == 0x40) // channelConfiguration = 1 (mono)
     }
 }

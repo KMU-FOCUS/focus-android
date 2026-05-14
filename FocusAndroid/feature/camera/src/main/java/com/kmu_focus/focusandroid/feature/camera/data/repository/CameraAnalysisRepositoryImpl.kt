@@ -52,6 +52,18 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
     private var metadataSessionId: String? = null
     private var metadataEnabled = false
     private var metadataFrameIndex = 0
+    private var sourceFrameWidth = 0
+    private var sourceFrameHeight = 0
+
+    override fun updateSourceFrameSize(
+        width: Int,
+        height: Int,
+    ) {
+        synchronized(metadataStateLock) {
+            sourceFrameWidth = width.coerceAtLeast(0)
+            sourceFrameHeight = height.coerceAtLeast(0)
+        }
+    }
 
     override fun registerOwnerFromFrame(
         rgbaBuffer: ByteBuffer,
@@ -104,7 +116,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         val thumbnailPath = if (success) saveFaceThumbnail(crop) else null
 
         if (success) {
-            trackLabelState.removeTrack(trackId)
+            trackLabelState.markOwner(trackId)
             Log.i(TAG, "registerOwner: trackId=$trackId registered, thumbnail=$thumbnailPath")
         }
 
@@ -199,8 +211,16 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
 
     private fun enqueueMetadataFrame(frame: ProcessedFrame) {
         val frameExport = frame.frameExport ?: return
-        val sessionId = synchronized(metadataStateLock) {
-            metadataSessionId ?: UUID.randomUUID().toString().also { metadataSessionId = it }
+        val (sessionId, coordinateSpace) = synchronized(metadataStateLock) {
+            val resolvedSessionId = metadataSessionId
+                ?: UUID.randomUUID().toString().also { metadataSessionId = it }
+            val resolvedCoordinateSpace = MetadataMapper.CoordinateSpace(
+                analysisWidth = frame.frameWidth,
+                analysisHeight = frame.frameHeight,
+                sourceWidth = sourceFrameWidth,
+                sourceHeight = sourceFrameHeight,
+            ).takeIf(MetadataMapper.CoordinateSpace::isValid)
+            resolvedSessionId to resolvedCoordinateSpace
         }
         val metadata = MetadataMapper.mapFrame(
             sessionId = sessionId,
@@ -216,6 +236,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
                     isOwner = face.isOwner,
                 )
             },
+            coordinateSpace = coordinateSpace,
         )
 
         launchMetadataJob {

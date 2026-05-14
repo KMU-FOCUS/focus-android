@@ -79,6 +79,13 @@ class TrackLabelState(
     fun getFramesSeen(trackId: Int): Int = state[trackId]?.framesSeen ?: 0
     fun getCollectFrames(): Int = collectFrames
     fun getFrontFaceChecked(trackId: Int): Boolean = state[trackId]?.frontFaceChecked ?: false
+    fun markOwner(trackId: Int) {
+        val entry = state.getOrPut(trackId) { Entry(mutableListOf()) }
+        entry.embeddings.clear()
+        entry.isOwner = true
+        entry.frontFaceChecked = true
+        entry.wasAbsentLastFrame = false
+    }
     fun removeTrack(trackId: Int) { state.remove(trackId) }
     fun clear() { state.clear() }
 }

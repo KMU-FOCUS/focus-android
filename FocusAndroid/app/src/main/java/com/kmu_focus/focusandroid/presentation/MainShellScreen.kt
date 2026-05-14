@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -22,6 +23,7 @@ import com.kmu_focus.focusandroid.feature.account.presentation.mypage.MyPageScre
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.camera.BroadcastCameraScreen
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.create.CreateBroadcastScreen
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.list.BroadcastListScreen
+import com.kmu_focus.focusandroid.feature.metadatareview.presentation.MetadataReviewScreen
 import com.kmu_focus.focusandroid.feature.video.presentation.main.MainScreen
 
 @Composable
@@ -68,6 +70,18 @@ fun MainShellScreen(
                         label = { Text("내 정보") },
                         alwaysShowLabel = false,
                     )
+                    NavigationBarItem(
+                        selected = uiState.selectedTab == MainTab.REVIEW,
+                        onClick = { viewModel.selectTab(MainTab.REVIEW) },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "리뷰",
+                            )
+                        },
+                        label = { Text("리뷰") },
+                        alwaysShowLabel = false,
+                    )
                 }
             }
         },
@@ -98,6 +112,10 @@ fun MainShellScreen(
 
                         MainTab.VIDEO -> {
                             MainScreen()
+                        }
+
+                        MainTab.REVIEW -> {
+                            MetadataReviewScreen()
                         }
 
                         MainTab.PROFILE -> {

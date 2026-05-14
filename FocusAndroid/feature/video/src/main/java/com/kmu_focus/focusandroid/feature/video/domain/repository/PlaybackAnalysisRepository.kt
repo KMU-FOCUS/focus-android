@@ -4,6 +4,13 @@ import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import java.nio.ByteBuffer
 
 interface PlaybackAnalysisRepository {
+    fun updateSourceVideoSize(
+        width: Int,
+        height: Int,
+    ) {}
+
+    fun markTrackAsOwner(trackId: Int) {}
+
     fun processFrame(
         buffer: ByteBuffer,
         width: Int,

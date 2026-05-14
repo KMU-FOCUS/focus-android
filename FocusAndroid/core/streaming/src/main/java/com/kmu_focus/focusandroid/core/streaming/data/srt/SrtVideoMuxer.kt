@@ -296,18 +296,19 @@ class SrtVideoMuxer(
     private data class AudioConfig(
         val sampleRate: Int,
         val channelCount: Int,
+        val audioObjectType: Int,
+        val sampleRateIndex: Int,
+        val channelConfiguration: Int,
     ) {
         fun withAdtsHeader(aacFrame: ByteArray): ByteArray {
             val frameLength = (ADTS_HEADER_SIZE + aacFrame.size).coerceAtMost(MAX_ADTS_FRAME_LENGTH)
             val header = ByteArray(ADTS_HEADER_SIZE)
-            val profile = AAC_PROFILE_LC
-            val sampleRateIndex = SAMPLE_RATE_INDEX_TABLE[sampleRate] ?: DEFAULT_SAMPLE_RATE_INDEX
-            val channelConfig = channelCount.coerceIn(1, 7)
+            val adtsProfile = (audioObjectType.coerceAtLeast(1) - 1).coerceIn(0, ADTS_PROFILE_MAX)
 
             header[0] = 0xFF.toByte()
             header[1] = 0xF1.toByte()
-            header[2] = (((profile - 1) shl 6) or (sampleRateIndex shl 2) or (channelConfig shr 2)).toByte()
-            header[3] = (((channelConfig and 0x03) shl 6) or (frameLength shr 11)).toByte()
+            header[2] = ((adtsProfile shl 6) or (sampleRateIndex shl 2) or (channelConfiguration shr 2)).toByte()
+            header[3] = (((channelConfiguration and 0x03) shl 6) or (frameLength shr 11)).toByte()
             header[4] = ((frameLength shr 3) and 0xFF).toByte()
             header[5] = (((frameLength and 0x07) shl 5) or 0x1F).toByte()
             header[6] = 0xFC.toByte()
@@ -323,19 +324,79 @@ class SrtVideoMuxer(
 
         companion object {
             fun from(format: MediaFormat): AudioConfig {
-                val sampleRate = runCatching {
+                val fallbackSampleRate = runCatching {
                     format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                 }.getOrDefault(44_100)
-                val channelCount = runCatching {
+                val fallbackChannelCount = runCatching {
                     format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 }.getOrDefault(2)
+                val parsedConfig = extractByteBuffer(format, "csd-0")
+                    ?.let(::parseAudioSpecificConfig)
+
+                val sampleRateIndex = parsedConfig?.sampleRateIndex
+                    ?: SAMPLE_RATE_INDEX_TABLE[fallbackSampleRate]
+                    ?: DEFAULT_SAMPLE_RATE_INDEX
+                val sampleRate = parsedConfig?.sampleRate
+                    ?: SAMPLE_RATE_BY_INDEX_TABLE[sampleRateIndex]
+                    ?: fallbackSampleRate
+                val channelConfiguration = parsedConfig?.channelConfiguration
+                    ?.takeIf { it > 0 }
+                    ?: fallbackChannelCount.coerceIn(1, MAX_ADTS_CHANNEL_CONFIGURATION)
+                val channelCount = parsedConfig?.channelCount
+                    ?.takeIf { it > 0 }
+                    ?: fallbackChannelCount
+                val audioObjectType = parsedConfig?.audioObjectType
+                    ?: DEFAULT_AUDIO_OBJECT_TYPE
                 return AudioConfig(
                     sampleRate = sampleRate,
                     channelCount = channelCount,
+                    audioObjectType = audioObjectType,
+                    sampleRateIndex = sampleRateIndex,
+                    channelConfiguration = channelConfiguration,
+                )
+            }
+
+            private fun extractByteBuffer(
+                format: MediaFormat,
+                key: String,
+            ): ByteArray? {
+                val buffer = runCatching { format.getByteBuffer(key) }.getOrNull() ?: return null
+                val duplicate = buffer.duplicate()
+                duplicate.position(0)
+                return ByteArray(duplicate.remaining()).also(duplicate::get)
+            }
+
+            private fun parseAudioSpecificConfig(config: ByteArray): ParsedAudioSpecificConfig? {
+                if (config.size < AUDIO_SPECIFIC_CONFIG_MIN_SIZE) {
+                    return null
+                }
+                val byte0 = config[0].toInt() and 0xFF
+                val byte1 = config[1].toInt() and 0xFF
+                val audioObjectType = (byte0 shr 3) and 0x1F
+                val sampleRateIndex = ((byte0 and 0x07) shl 1) or ((byte1 shr 7) and 0x01)
+                if (audioObjectType == 0 || sampleRateIndex == EXPLICIT_SAMPLE_RATE_INDEX) {
+                    return null
+                }
+                val sampleRate = SAMPLE_RATE_BY_INDEX_TABLE[sampleRateIndex] ?: return null
+                val channelConfiguration = (byte1 shr 3) and 0x0F
+                return ParsedAudioSpecificConfig(
+                    audioObjectType = audioObjectType,
+                    sampleRateIndex = sampleRateIndex,
+                    sampleRate = sampleRate,
+                    channelConfiguration = channelConfiguration,
+                    channelCount = CHANNEL_COUNT_BY_CONFIGURATION[channelConfiguration] ?: 0,
                 )
             }
         }
     }
+
+    private data class ParsedAudioSpecificConfig(
+        val audioObjectType: Int,
+        val sampleRateIndex: Int,
+        val sampleRate: Int,
+        val channelConfiguration: Int,
+        val channelCount: Int,
+    )
 
     private enum class TrackType {
         VIDEO,
@@ -352,8 +413,12 @@ class SrtVideoMuxer(
         const val AVC_NAL_LENGTH_FIELD_SIZE = 4
         const val ADTS_HEADER_SIZE = 7
         const val MAX_ADTS_FRAME_LENGTH = 8191
-        const val AAC_PROFILE_LC = 2
+        const val DEFAULT_AUDIO_OBJECT_TYPE = 2
+        const val ADTS_PROFILE_MAX = 3
         const val DEFAULT_SAMPLE_RATE_INDEX = 4 // 44100
+        const val EXPLICIT_SAMPLE_RATE_INDEX = 0x0F
+        const val AUDIO_SPECIFIC_CONFIG_MIN_SIZE = 2
+        const val MAX_ADTS_CHANNEL_CONFIGURATION = 7
         val ANNEXB_START_CODE = byteArrayOf(0x00, 0x00, 0x00, 0x01)
         val SAMPLE_RATE_INDEX_TABLE = mapOf(
             96000 to 0,
@@ -369,6 +434,18 @@ class SrtVideoMuxer(
             11025 to 10,
             8000 to 11,
             7350 to 12,
+        )
+        val SAMPLE_RATE_BY_INDEX_TABLE = SAMPLE_RATE_INDEX_TABLE.entries.associate { (rate, index) ->
+            index to rate
+        }
+        val CHANNEL_COUNT_BY_CONFIGURATION = mapOf(
+            1 to 1,
+            2 to 2,
+            3 to 3,
+            4 to 4,
+            5 to 5,
+            6 to 6,
+            7 to 8,
         )
 
         // PID=0x1FFF null TS 패킷 — 수신 측에서 무시되며, SRT 페이로드 크기 맞춤용

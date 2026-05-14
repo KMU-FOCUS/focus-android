@@ -6,6 +6,11 @@ import com.kmu_focus.focusandroid.feature.camera.domain.entity.OwnerRegistration
 import java.nio.ByteBuffer
 
 interface CameraAnalysisRepository {
+    fun updateSourceFrameSize(
+        width: Int,
+        height: Int,
+    ) {}
+
     fun processFrame(
         rgbaBuffer: ByteBuffer,
         width: Int,

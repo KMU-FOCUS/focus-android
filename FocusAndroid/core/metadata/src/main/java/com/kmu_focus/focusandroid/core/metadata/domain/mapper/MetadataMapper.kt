@@ -6,8 +6,23 @@ import com.kmu_focus.focusandroid.core.metadata.domain.entity.FrameMetadata
 import com.kmu_focus.focusandroid.core.metadata.domain.entity.ThreeDMM
 import java.util.logging.Level
 import java.util.logging.Logger
+import kotlin.math.ceil
+import kotlin.math.floor
 
 object MetadataMapper {
+
+    data class CoordinateSpace(
+        val analysisWidth: Int,
+        val analysisHeight: Int,
+        val sourceWidth: Int,
+        val sourceHeight: Int,
+    ) {
+        fun isValid(): Boolean =
+            analysisWidth > 0 &&
+                analysisHeight > 0 &&
+                sourceWidth > 0 &&
+                sourceHeight > 0
+    }
 
     data class FaceExportPayload(
         val trackingId: Int,
@@ -23,6 +38,7 @@ object MetadataMapper {
         sessionId: String,
         timestampSeconds: Double,
         faces: List<FaceExportPayload>,
+        coordinateSpace: CoordinateSpace? = null,
     ): FrameMetadata {
         val ptsUs = if (timestampSeconds.isFinite()) {
             (timestampSeconds * MICROS_PER_SECOND).toLong()
@@ -56,14 +72,18 @@ object MetadataMapper {
                     )
                     return@mapNotNull null
                 }
+                val mappedBbox = mapBoundingBoxToSourcePixelSpace(
+                    bbox = face.bbox,
+                    coordinateSpace = coordinateSpace,
+                )
 
                 FaceData(
                     trackingId = face.trackingId,
                     bbox = BBox(
-                        x = face.bbox[0],
-                        y = face.bbox[1],
-                        width = face.bbox[2],
-                        height = face.bbox[3],
+                        x = mappedBbox[0],
+                        y = mappedBbox[1],
+                        width = mappedBbox[2],
+                        height = mappedBbox[3],
                     ),
                     tdmm = ThreeDMM(
                         coeffs = concatCoeffs(id, exp, pose, extra),
@@ -115,6 +135,62 @@ object MetadataMapper {
             expDim == FACEMAP_EXP_DIM &&
             poseDim == FACEMAP_POSE_DIM &&
             extraDim == FACEMAP_EXTRA_DIM
+    }
+
+    private fun mapBoundingBoxToSourcePixelSpace(
+        bbox: IntArray,
+        coordinateSpace: CoordinateSpace?,
+    ): IntArray {
+        if (coordinateSpace?.isValid() != true) return bbox.copyOf()
+
+        val analysisWidth = coordinateSpace.analysisWidth.toFloat()
+        val analysisHeight = coordinateSpace.analysisHeight.toFloat()
+        val sourceWidth = coordinateSpace.sourceWidth
+        val sourceHeight = coordinateSpace.sourceHeight
+        val scale = minOf(
+            analysisWidth / sourceWidth.toFloat(),
+            analysisHeight / sourceHeight.toFloat(),
+        )
+        if (!scale.isFinite() || scale <= 0f) return bbox.copyOf()
+
+        val contentWidth = sourceWidth * scale
+        val contentHeight = sourceHeight * scale
+        val contentLeft = (analysisWidth - contentWidth) / 2f
+        val contentTop = (analysisHeight - contentHeight) / 2f
+
+        val rawLeft = (bbox[0] - contentLeft) / scale
+        val rawTop = (bbox[1] - contentTop) / scale
+        val rawRight = (bbox[0] + bbox[2] - contentLeft) / scale
+        val rawBottom = (bbox[1] + bbox[3] - contentTop) / scale
+        if (
+            !rawLeft.isFinite() ||
+            !rawTop.isFinite() ||
+            !rawRight.isFinite() ||
+            !rawBottom.isFinite()
+        ) {
+            return bbox.copyOf()
+        }
+        if (
+            rawRight <= 0f ||
+            rawBottom <= 0f ||
+            rawLeft >= sourceWidth.toFloat() ||
+            rawTop >= sourceHeight.toFloat()
+        ) {
+            return bbox.copyOf()
+        }
+
+        val mappedLeft = floor(rawLeft).toInt().coerceIn(0, sourceWidth - 1)
+        val mappedTop = floor(rawTop).toInt().coerceIn(0, sourceHeight - 1)
+        val mappedRight = ceil(rawRight).toInt().coerceIn(0, sourceWidth)
+        val mappedBottom = ceil(rawBottom).toInt().coerceIn(0, sourceHeight)
+        val mappedWidth = (mappedRight - mappedLeft)
+            .coerceAtLeast(1)
+            .coerceAtMost(sourceWidth - mappedLeft)
+        val mappedHeight = (mappedBottom - mappedTop)
+            .coerceAtLeast(1)
+            .coerceAtMost(sourceHeight - mappedTop)
+
+        return intArrayOf(mappedLeft, mappedTop, mappedWidth, mappedHeight)
     }
 
     private fun logDrop(reason: String, face: FaceExportPayload) {

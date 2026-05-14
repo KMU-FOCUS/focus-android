@@ -78,6 +78,7 @@ dependencies {
     implementation(project(":feature:auth"))
     implementation(project(":feature:account"))
     implementation(project(":feature:broadcast"))
+    implementation(project(":feature:metadatareview"))
     implementation(project(":core:ai"))
     implementation(project(":core:grpc"))
     implementation(project(":core:media"))

@@ -84,6 +84,7 @@ class CameraViewModel @Inject constructor(
         height: Int,
     ) {
         if (width <= 0 || height <= 0) return
+        cameraAnalysisUseCase.updateSourceFrameSize(width, height)
         val currentState = _uiState.value
         if (currentState.previewWidth == width && currentState.previewHeight == height) {
             return
@@ -96,6 +97,7 @@ class CameraViewModel @Inject constructor(
 
     fun stopCamera() {
         stopRecordingInternal(saveRecordingFile = false)
+        cameraAnalysisUseCase.updateSourceFrameSize(0, 0)
         manualOwnerTrackIds.clear()
         pendingOwnerRegistrationTrackId = null
         _uiState.value = _uiState.value.copy(
@@ -120,6 +122,7 @@ class CameraViewModel @Inject constructor(
 
     fun stopDetection() {
         stopRecordingInternal(saveRecordingFile = false)
+        cameraAnalysisUseCase.updateSourceFrameSize(0, 0)
         manualOwnerTrackIds.clear()
         pendingOwnerRegistrationTrackId = null
         _uiState.value = _uiState.value.copy(
@@ -279,6 +282,7 @@ class CameraViewModel @Inject constructor(
     }
 
     fun switchLensFacing() {
+        cameraAnalysisUseCase.updateSourceFrameSize(0, 0)
         manualOwnerTrackIds.clear()
         pendingOwnerRegistrationTrackId = null
 

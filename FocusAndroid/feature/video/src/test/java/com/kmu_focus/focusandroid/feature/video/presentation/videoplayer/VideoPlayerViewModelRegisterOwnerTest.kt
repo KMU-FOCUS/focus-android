@@ -73,6 +73,7 @@ class VideoPlayerViewModelRegisterOwnerTest {
         coEvery { registerOwnerUseCase.replaceOwnerEmbedding(any(), any(), any(), eq(3), eq(0)) } returns true
 
         viewModel.registerOwnerByTrackId(3)
+        verify(exactly = 1) { playbackAnalysisUseCase.markTrackAsOwner(3) }
         viewModel.processFrameSync(buffer, 640, 480)
         advanceUntilIdle()
     }
@@ -100,6 +101,7 @@ class VideoPlayerViewModelRegisterOwnerTest {
         every { addOwnerFromUriUseCase("content://media/external/images/media/6") } returns true
 
         viewModel.registerOwnerByTrackId(6)
+        verify(exactly = 1) { playbackAnalysisUseCase.markTrackAsOwner(6) }
         viewModel.processFrameSync(buffer, 640, 480)
         advanceUntilIdle()
 

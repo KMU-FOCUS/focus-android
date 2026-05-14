@@ -10,6 +10,13 @@ import javax.inject.Inject
 class CameraAnalysisUseCase @Inject constructor(
     private val cameraAnalysisRepository: CameraAnalysisRepository,
 ) {
+    fun updateSourceFrameSize(
+        width: Int,
+        height: Int,
+    ) {
+        cameraAnalysisRepository.updateSourceFrameSize(width, height)
+    }
+
     fun processFrame(
         rgbaBuffer: ByteBuffer,
         width: Int,
