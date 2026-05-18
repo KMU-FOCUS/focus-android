@@ -14,21 +14,33 @@ class MosaicProgramTest {
                 centerY = 0.20f,
                 radiusX = 0.30f,
                 radiusY = 0.40f,
-                angle = 0.50f
+                angle = 0.50f,
+                topClip = -0.70f,
+                leftRadiusX = 0.25f,
+                rightRadiusX = 0.35f,
+                maskColorR = 0.61f,
+                maskColorG = 0.52f,
+                maskColorB = 0.48f,
             ),
             EllipseParams(
                 centerX = 0.60f,
                 centerY = 0.70f,
                 radiusX = 0.80f,
                 radiusY = 0.90f,
-                angle = 1.00f
+                angle = 1.00f,
+                maskColorR = 0.72f,
+                maskColorG = 0.63f,
+                maskColorB = 0.58f,
             )
         )
 
         val faceCount = program.updateUniformData(ellipses)
         val centers = program.getUniformCentersForTest()
-        val radii = program.getUniformRadiiForTest()
+        val horizontalRadii = program.getUniformHorizontalRadiiForTest()
+        val verticalRadii = program.getUniformVerticalRadiiForTest()
         val angles = program.getUniformAnglesForTest()
+        val topClips = program.getUniformTopClipsForTest()
+        val maskColors = program.getUniformMaskColorsForTest()
 
         assertEquals(2, faceCount)
         assertEquals(0.10f, centers[0], EPSILON)
@@ -36,16 +48,28 @@ class MosaicProgramTest {
         assertEquals(0.60f, centers[2], EPSILON)
         assertEquals(0.70f, centers[3], EPSILON)
 
-        assertEquals(0.30f, radii[0], EPSILON)
-        assertEquals(0.40f, radii[1], EPSILON)
-        assertEquals(0.80f, radii[2], EPSILON)
-        assertEquals(0.90f, radii[3], EPSILON)
+        assertEquals(0.25f, horizontalRadii[0], EPSILON)
+        assertEquals(0.35f, horizontalRadii[1], EPSILON)
+        assertEquals(0.80f, horizontalRadii[2], EPSILON)
+        assertEquals(0.80f, horizontalRadii[3], EPSILON)
+        assertEquals(0.40f, verticalRadii[0], EPSILON)
+        assertEquals(0.90f, verticalRadii[1], EPSILON)
 
         assertEquals(0.50f, angles[0], EPSILON)
         assertEquals(1.00f, angles[1], EPSILON)
+        assertEquals(-0.70f, topClips[0], EPSILON)
+        assertEquals(-1f, topClips[1], EPSILON)
+        assertEquals(0.61f, maskColors[0], EPSILON)
+        assertEquals(0.52f, maskColors[1], EPSILON)
+        assertEquals(0.48f, maskColors[2], EPSILON)
+        assertEquals(0.72f, maskColors[3], EPSILON)
+        assertEquals(0.63f, maskColors[4], EPSILON)
+        assertEquals(0.58f, maskColors[5], EPSILON)
         assertEquals(0f, centers[4], EPSILON)
-        assertEquals(0f, radii[4], EPSILON)
+        assertEquals(0f, horizontalRadii[4], EPSILON)
         assertEquals(0f, angles[2], EPSILON)
+        assertEquals(0f, topClips[2], EPSILON)
+        assertEquals(0f, maskColors[6], EPSILON)
     }
 
     @Test
@@ -57,15 +81,21 @@ class MosaicProgramTest {
 
         val faceCount = program.updateUniformData(emptyList())
         val centers = program.getUniformCentersForTest()
-        val radii = program.getUniformRadiiForTest()
+        val horizontalRadii = program.getUniformHorizontalRadiiForTest()
+        val verticalRadii = program.getUniformVerticalRadiiForTest()
         val angles = program.getUniformAnglesForTest()
+        val topClips = program.getUniformTopClipsForTest()
+        val maskColors = program.getUniformMaskColorsForTest()
 
         assertEquals(0, faceCount)
         assertEquals(0f, centers[0], EPSILON)
         assertEquals(0f, centers[1], EPSILON)
-        assertEquals(0f, radii[0], EPSILON)
-        assertEquals(0f, radii[1], EPSILON)
+        assertEquals(0f, horizontalRadii[0], EPSILON)
+        assertEquals(0f, horizontalRadii[1], EPSILON)
+        assertEquals(0f, verticalRadii[0], EPSILON)
         assertEquals(0f, angles[0], EPSILON)
+        assertEquals(0f, topClips[0], EPSILON)
+        assertEquals(0f, maskColors[0], EPSILON)
     }
 
     @Test
@@ -100,15 +130,21 @@ class MosaicProgramTest {
             listOf(EllipseParams(0.11f, 0.22f, 0.33f, 0.44f, 0.55f))
         )
         val centers = program.getUniformCentersForTest()
-        val radii = program.getUniformRadiiForTest()
+        val horizontalRadii = program.getUniformHorizontalRadiiForTest()
+        val verticalRadii = program.getUniformVerticalRadiiForTest()
         val angles = program.getUniformAnglesForTest()
+        val topClips = program.getUniformTopClipsForTest()
+        val maskColors = program.getUniformMaskColorsForTest()
 
         assertEquals(1, faceCount)
         assertEquals(0f, centers[2], EPSILON)
         assertEquals(0f, centers[3], EPSILON)
-        assertEquals(0f, radii[2], EPSILON)
-        assertEquals(0f, radii[3], EPSILON)
+        assertEquals(0f, horizontalRadii[2], EPSILON)
+        assertEquals(0f, horizontalRadii[3], EPSILON)
+        assertEquals(0f, verticalRadii[1], EPSILON)
         assertEquals(0f, angles[1], EPSILON)
+        assertEquals(0f, topClips[1], EPSILON)
+        assertEquals(0f, maskColors[3], EPSILON)
     }
 
     private companion object {

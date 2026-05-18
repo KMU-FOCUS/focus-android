@@ -114,8 +114,8 @@ class VideoRendererRecordingPolicyTest {
     }
 
     @Test
-    fun `privacy blur ROI는 얼굴 원을 감싸는 union 영역으로 계산된다`() {
-        val region = calculatePrivacyBlurRegion(
+    fun `privacy mask 영역은 얼굴 원을 감싸는 union 영역으로 계산된다`() {
+        val region = calculatePrivacyMaskRegion(
             ellipses = listOf(
                 EllipseParams(
                     centerX = 0.50f,
@@ -133,17 +133,77 @@ class VideoRendererRecordingPolicyTest {
         assertEquals(0.32f, region?.regionRect?.minY ?: 0f, 0.0001f)
         assertEquals(0.77f, region?.regionRect?.maxX ?: 0f, 0.0001f)
         assertEquals(0.68f, region?.regionRect?.maxY ?: 0f, 0.0001f)
-        assertEquals(20, region?.blurWidth)
-        assertEquals(8, region?.blurHeight)
     }
 
     @Test
-    fun `privacy blur 저해상도 크기는 얼굴이 클수록 더 작아진다`() {
-        val small = resolvePrivacyBlurTextureSize(regionWidth = 120, regionHeight = 80)
-        val large = resolvePrivacyBlurTextureSize(regionWidth = 320, regionHeight = 240)
+    fun `privacy mask는 위치는 현재 프레임을 따르고 크기만 완만하게 안정화한다`() {
+        val stabilized = stabilizePrivacyEllipses(
+            previousEllipses = listOf(
+                EllipseParams(
+                    centerX = 0.40f,
+                    centerY = 0.42f,
+                    radiusX = 0.18f,
+                    radiusY = 0.24f,
+                    angle = 0.10f,
+                    topClip = -0.55f,
+                    leftRadiusX = 0.17f,
+                    rightRadiusX = 0.21f,
+                )
+            ),
+            currentEllipses = listOf(
+                EllipseParams(
+                    centerX = 0.50f,
+                    centerY = 0.52f,
+                    radiusX = 0.22f,
+                    radiusY = 0.28f,
+                    angle = 0.20f,
+                    topClip = -0.45f,
+                    leftRadiusX = 0.20f,
+                    rightRadiusX = 0.25f,
+                )
+            ),
+            shapeSmoothingFactor = 0.72f,
+        ).single()
 
-        assertTrue(small.first > large.first)
-        assertTrue(small.second > large.second)
+        assertEquals(0.496f, stabilized.centerX, 0.0001f)
+        assertEquals(0.516f, stabilized.centerY, 0.0001f)
+        assertEquals(0.2088f, stabilized.radiusX, 0.0001f)
+        assertEquals(0.2688f, stabilized.radiusY, 0.0001f)
+        assertEquals(0.138f, stabilized.angle, 0.0001f)
+        assertEquals(-0.478f, stabilized.topClip, 0.0001f)
+        assertEquals(0.1916f, stabilized.leftRadiusX, 0.0001f)
+        assertEquals(0.2388f, stabilized.rightRadiusX, 0.0001f)
+    }
+
+    @Test
+    fun `privacy mask는 너무 멀리 이동한 얼굴이면 이전 프레임과 섞지 않는다`() {
+        val current = EllipseParams(
+            centerX = 0.82f,
+            centerY = 0.80f,
+            radiusX = 0.12f,
+            radiusY = 0.14f,
+            angle = 0.05f,
+            leftRadiusX = 0.11f,
+            rightRadiusX = 0.13f,
+        )
+
+        val stabilized = stabilizePrivacyEllipses(
+            previousEllipses = listOf(
+                EllipseParams(
+                    centerX = 0.12f,
+                    centerY = 0.18f,
+                    radiusX = 0.12f,
+                    radiusY = 0.14f,
+                    angle = 0.01f,
+                    leftRadiusX = 0.11f,
+                    rightRadiusX = 0.13f,
+                )
+            ),
+            currentEllipses = listOf(current),
+            shapeSmoothingFactor = 0.72f,
+        ).single()
+
+        assertEquals(current, stabilized)
     }
 
     @Test
