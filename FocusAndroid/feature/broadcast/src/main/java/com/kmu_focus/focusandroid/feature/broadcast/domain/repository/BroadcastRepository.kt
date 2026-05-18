@@ -5,10 +5,7 @@ import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
 interface BroadcastRepository {
     suspend fun createBroadcast(title: String): Result<Broadcast>
 
-    suspend fun startBroadcast(
-        broadcastId: String,
-        avatarId: String,
-    ): Result<Broadcast>
+    suspend fun startBroadcast(broadcastId: String): Result<Broadcast>
 
     suspend fun stopBroadcast(broadcastId: String): Result<Broadcast>
 

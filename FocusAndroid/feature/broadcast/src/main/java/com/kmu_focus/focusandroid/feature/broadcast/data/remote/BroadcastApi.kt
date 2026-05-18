@@ -21,6 +21,9 @@ interface BroadcastApi {
         @Body request: CreateBroadcastRequestDto,
     ): Response<ApiResponse<BroadcastResponseDto>>
 
+    @GET("/api/v1/avatars")
+    suspend fun getAvatarIds(): Response<ApiResponse<List<String>>>
+
     @POST("/api/v1/broadcasts/{broadcastId}/start")
     suspend fun startBroadcast(
         @Path("broadcastId") broadcastId: String,

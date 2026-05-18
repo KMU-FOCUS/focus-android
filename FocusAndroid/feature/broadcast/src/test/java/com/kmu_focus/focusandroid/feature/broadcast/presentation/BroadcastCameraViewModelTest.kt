@@ -63,7 +63,7 @@ class BroadcastCameraViewModelTest {
     @Test
     fun `startBroadcasting 성공 시 isBroadcasting이 true가 된다`() = runTest {
         coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any(), any())
+            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
         } returns Result.success(Unit)
         every {
             broadcastStreamingUseCase.startHeartbeat(any(), any())
@@ -75,7 +75,7 @@ class BroadcastCameraViewModelTest {
             streamKey = "stream-key-abc",
         )
 
-        viewModel.startBroadcasting("avatar-a")
+        viewModel.startBroadcasting()
 
         assertTrue(viewModel.uiState.value.isBroadcasting)
     }
@@ -83,7 +83,7 @@ class BroadcastCameraViewModelTest {
     @Test
     fun `startBroadcasting 실패 시 error가 설정된다`() = runTest {
         coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any(), any())
+            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
         } returns Result.failure(RuntimeException("SRT 연결 실패"))
 
         viewModel = BroadcastCameraViewModel(
@@ -92,7 +92,7 @@ class BroadcastCameraViewModelTest {
             streamKey = "stream-key-abc",
         )
 
-        viewModel.startBroadcasting("avatar-a")
+        viewModel.startBroadcasting()
 
         assertFalse(viewModel.uiState.value.isBroadcasting)
         assertEquals("SRT 연결 실패", viewModel.uiState.value.error)
@@ -101,7 +101,7 @@ class BroadcastCameraViewModelTest {
     @Test
     fun `stopBroadcasting 호출 시 isBroadcasting이 false가 된다`() = runTest {
         coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any(), any())
+            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
         } returns Result.success(Unit)
         every {
             broadcastStreamingUseCase.startHeartbeat(any(), any())
@@ -116,7 +116,7 @@ class BroadcastCameraViewModelTest {
             streamKey = "stream-key-abc",
         )
 
-        viewModel.startBroadcasting("avatar-a")
+        viewModel.startBroadcasting()
         assertTrue(viewModel.uiState.value.isBroadcasting)
 
         viewModel.stopBroadcasting()
@@ -126,7 +126,7 @@ class BroadcastCameraViewModelTest {
     @Test
     fun `stopBroadcasting 호출 시 stopBroadcast UseCase가 호출된다`() = runTest {
         coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any(), any())
+            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
         } returns Result.success(Unit)
         every {
             broadcastStreamingUseCase.startHeartbeat(any(), any())
@@ -141,7 +141,7 @@ class BroadcastCameraViewModelTest {
             streamKey = "stream-key-abc",
         )
 
-        viewModel.startBroadcasting("avatar-a")
+        viewModel.startBroadcasting()
         viewModel.stopBroadcasting()
 
         coVerify(exactly = 1) { broadcastStreamingUseCase.stopBroadcast("broadcast-1") }
@@ -163,7 +163,7 @@ class BroadcastCameraViewModelTest {
     @Test
     fun `startBroadcasting 성공 시 하트비트가 시작된다`() = runTest {
         coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any(), any())
+            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
         } returns Result.success(Unit)
         every {
             broadcastStreamingUseCase.startHeartbeat(any(), any())
@@ -175,7 +175,7 @@ class BroadcastCameraViewModelTest {
             streamKey = "stream-key-abc",
         )
 
-        viewModel.startBroadcasting("avatar-a")
+        viewModel.startBroadcasting()
 
         every {
             broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any())
@@ -185,7 +185,7 @@ class BroadcastCameraViewModelTest {
     @Test
     fun `error 발생 후 다시 시작하면 error가 초기화된다`() = runTest {
         coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any(), any())
+            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
         } returns Result.failure(RuntimeException("실패")) andThen Result.success(Unit)
         every {
             broadcastStreamingUseCase.startHeartbeat(any(), any())
@@ -197,10 +197,10 @@ class BroadcastCameraViewModelTest {
             streamKey = "stream-key-abc",
         )
 
-        viewModel.startBroadcasting("avatar-a")
+        viewModel.startBroadcasting()
         assertEquals("실패", viewModel.uiState.value.error)
 
-        viewModel.startBroadcasting("avatar-a")
+        viewModel.startBroadcasting()
         assertNull(viewModel.uiState.value.error)
         assertTrue(viewModel.uiState.value.isBroadcasting)
     }

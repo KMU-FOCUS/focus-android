@@ -7,13 +7,7 @@ import javax.inject.Inject
 class StartBroadcastUseCase @Inject constructor(
     private val broadcastRepository: BroadcastRepository,
 ) {
-    suspend operator fun invoke(
-        broadcastId: String,
-        avatarId: String,
-    ): Result<Broadcast> {
-        return broadcastRepository.startBroadcast(
-            broadcastId = broadcastId,
-            avatarId = avatarId,
-        )
+    suspend operator fun invoke(broadcastId: String): Result<Broadcast> {
+        return broadcastRepository.startBroadcast(broadcastId = broadcastId)
     }
 }

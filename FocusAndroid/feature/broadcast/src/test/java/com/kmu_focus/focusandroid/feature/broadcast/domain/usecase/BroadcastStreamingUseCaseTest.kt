@@ -45,12 +45,11 @@ class BroadcastStreamingUseCaseTest {
     @Test
     fun `startBroadcast 호출 시 SRT MuxerFactory를 생성한다`() = runTest {
         every { srtStreamRepository.createMuxerFactory(any()) } returns mockk()
-        coEvery { broadcastRepository.startBroadcast(any(), any()) } returns Result.success(startedBroadcast)
+        coEvery { broadcastRepository.startBroadcast(any()) } returns Result.success(startedBroadcast)
 
         val result = useCase.startBroadcast(
             broadcastId = "broadcast-1",
             streamKey = "stream-key-abc",
-            avatarId = "avatar-a",
             mediaMtxHost = "13.125.126.120",
             mediaMtxPort = 8890,
         )
@@ -66,28 +65,26 @@ class BroadcastStreamingUseCaseTest {
     @Test
     fun `startBroadcast 성공 시 서버에 방송 시작 API를 호출한다`() = runTest {
         every { srtStreamRepository.createMuxerFactory(any()) } returns mockk()
-        coEvery { broadcastRepository.startBroadcast("broadcast-1", "avatar-a") } returns Result.success(startedBroadcast)
+        coEvery { broadcastRepository.startBroadcast("broadcast-1") } returns Result.success(startedBroadcast)
 
         useCase.startBroadcast(
             broadcastId = "broadcast-1",
             streamKey = "stream-key-abc",
-            avatarId = "avatar-a",
             mediaMtxHost = "13.125.126.120",
             mediaMtxPort = 8890,
         )
 
-        coVerify(exactly = 1) { broadcastRepository.startBroadcast("broadcast-1", "avatar-a") }
+        coVerify(exactly = 1) { broadcastRepository.startBroadcast("broadcast-1") }
     }
 
     @Test
     fun `startBroadcast에서 서버 API 실패 시 Result failure를 반환한다`() = runTest {
         every { srtStreamRepository.createMuxerFactory(any()) } returns mockk()
-        coEvery { broadcastRepository.startBroadcast(any(), any()) } returns Result.failure(RuntimeException("워커 시작 실패"))
+        coEvery { broadcastRepository.startBroadcast(any()) } returns Result.failure(RuntimeException("워커 시작 실패"))
 
         val result = useCase.startBroadcast(
             broadcastId = "broadcast-1",
             streamKey = "stream-key-abc",
-            avatarId = "avatar-a",
             mediaMtxHost = "13.125.126.120",
             mediaMtxPort = 8890,
         )

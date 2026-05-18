@@ -123,10 +123,7 @@ class BroadcastCameraViewModel @Inject constructor(
         }
     }
 
-    fun confirmBroadcastStarted(
-        avatarId: String,
-        onFailure: () -> Unit = {},
-    ) {
+    fun confirmBroadcastStarted(onFailure: () -> Unit = {}) {
         val currentState = uiState.value
         if (!currentState.isPreparing || currentState.isBroadcasting) {
             return
@@ -135,7 +132,6 @@ class BroadcastCameraViewModel @Inject constructor(
         viewModelScope.launch {
             broadcastStreamingUseCase.confirmBroadcastStarted(
                 broadcastId = currentState.broadcastId,
-                avatarId = avatarId,
             ).onSuccess { broadcast ->
                 heartbeatJob?.cancel()
                 heartbeatJob = broadcastStreamingUseCase.startHeartbeat(
@@ -186,7 +182,7 @@ class BroadcastCameraViewModel @Inject constructor(
         }
     }
 
-    fun startBroadcasting(avatarId: String) {
+    fun startBroadcasting() {
         val currentState = uiState.value
         if (currentState.isBroadcasting) {
             return
@@ -203,7 +199,6 @@ class BroadcastCameraViewModel @Inject constructor(
             val result = broadcastStreamingUseCase.startBroadcast(
                 broadcastId = currentState.broadcastId,
                 streamKey = currentState.streamKey,
-                avatarId = avatarId,
                 mediaMtxHost = BuildConfig.MEDIA_MTX_HOST,
                 mediaMtxPort = BuildConfig.MEDIA_MTX_PORT,
             )

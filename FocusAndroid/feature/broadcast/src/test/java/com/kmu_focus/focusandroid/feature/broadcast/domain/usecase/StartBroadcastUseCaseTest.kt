@@ -36,22 +36,22 @@ class StartBroadcastUseCaseTest {
             startedAt = "2026-04-09T12:00:00",
             endedAt = null,
         )
-        coEvery { repository.startBroadcast("broadcast-1", "avatar-a") } returns Result.success(expected)
+        coEvery { repository.startBroadcast("broadcast-1") } returns Result.success(expected)
 
-        val result = useCase(broadcastId = "broadcast-1", avatarId = "avatar-a")
+        val result = useCase(broadcastId = "broadcast-1")
 
         assertTrue(result.isSuccess)
         val broadcast = result.getOrThrow()
         assertEquals(BroadcastStatus.ON_AIR, broadcast.status)
         assertEquals("https://cdn.example.com/live/broadcast-1.m3u8", broadcast.hlsUrl)
-        coVerify(exactly = 1) { repository.startBroadcast("broadcast-1", "avatar-a") }
+        coVerify(exactly = 1) { repository.startBroadcast("broadcast-1") }
     }
 
     @Test
     fun `방송 시작 실패 시 Result failure를 반환한다`() = runTest {
-        coEvery { repository.startBroadcast(any(), any()) } returns Result.failure(RuntimeException("워커 시작 실패"))
+        coEvery { repository.startBroadcast(any()) } returns Result.failure(RuntimeException("워커 시작 실패"))
 
-        val result = useCase(broadcastId = "broadcast-1", avatarId = "avatar-a")
+        val result = useCase(broadcastId = "broadcast-1")
 
         assertTrue(result.isFailure)
         assertEquals("워커 시작 실패", result.exceptionOrNull()?.message)

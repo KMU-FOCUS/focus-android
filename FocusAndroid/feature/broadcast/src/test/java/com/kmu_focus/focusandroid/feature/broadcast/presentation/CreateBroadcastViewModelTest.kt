@@ -74,16 +74,16 @@ class CreateBroadcastViewModelTest {
     }
 
     @Test
-    fun `방송 시작 시 기본 avatarId를 사용한다`() = runTest {
+    fun `방송 시작 시 생성된 broadcastId로 시작 요청을 보낸다`() = runTest {
         val startedBroadcast = createdBroadcast.copy(status = BroadcastStatus.ON_AIR)
         coEvery { createBroadcastUseCase("테스트 방송") } returns Result.success(createdBroadcast)
-        coEvery { startBroadcastUseCase("broadcast-1", "avatar-a") } returns Result.success(startedBroadcast)
+        coEvery { startBroadcastUseCase("broadcast-1") } returns Result.success(startedBroadcast)
 
         viewModel.updateTitle("테스트 방송")
         viewModel.createBroadcast()
         viewModel.startBroadcast()
 
-        coVerify(exactly = 1) { startBroadcastUseCase("broadcast-1", "avatar-a") }
+        coVerify(exactly = 1) { startBroadcastUseCase("broadcast-1") }
     }
 
     @Test
@@ -129,7 +129,7 @@ class CreateBroadcastViewModelTest {
             hlsUrl = "https://cdn.example.com/live/broadcast-1.m3u8",
         )
         coEvery { createBroadcastUseCase("테스트 방송") } returns Result.success(createdBroadcast)
-        coEvery { startBroadcastUseCase("broadcast-1", "avatar-a") } returns Result.success(startedBroadcast)
+        coEvery { startBroadcastUseCase("broadcast-1") } returns Result.success(startedBroadcast)
 
         viewModel.updateTitle("테스트 방송")
         viewModel.createBroadcast()
@@ -142,7 +142,7 @@ class CreateBroadcastViewModelTest {
     @Test
     fun `방송 시작 실패 시 error가 설정되고 createdBroadcast는 유지된다`() = runTest {
         coEvery { createBroadcastUseCase("테스트 방송") } returns Result.success(createdBroadcast)
-        coEvery { startBroadcastUseCase(any(), any()) } returns Result.failure(RuntimeException("워커 시작 실패"))
+        coEvery { startBroadcastUseCase(any()) } returns Result.failure(RuntimeException("워커 시작 실패"))
 
         viewModel.updateTitle("테스트 방송")
         viewModel.createBroadcast()
@@ -160,7 +160,7 @@ class CreateBroadcastViewModelTest {
 
         val state = viewModel.uiState.value
         assertNull(state.createdBroadcast)
-        coVerify(exactly = 0) { startBroadcastUseCase(any(), any()) }
+        coVerify(exactly = 0) { startBroadcastUseCase(any()) }
     }
 
     @Test

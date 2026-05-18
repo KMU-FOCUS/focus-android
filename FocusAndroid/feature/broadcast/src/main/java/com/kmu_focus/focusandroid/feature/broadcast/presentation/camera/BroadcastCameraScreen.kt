@@ -52,7 +52,6 @@ import dagger.hilt.components.SingletonComponent
 import java.io.File
 import kotlinx.coroutines.delay
 
-private const val DEFAULT_AVATAR_ID = "avatar-a"
 private const val DEFAULT_BROADCAST_WIDTH = 1280
 private const val DEFAULT_BROADCAST_HEIGHT = 720
 private const val BROADCAST_START_DELAY_MS = 2_000L
@@ -162,7 +161,7 @@ fun BroadcastCameraScreen(
         hasRequestedServerStart = true
         viewModel.markStreamingConnected()
         delay(BROADCAST_START_DELAY_MS)
-        viewModel.confirmBroadcastStarted(DEFAULT_AVATAR_ID) {
+        viewModel.confirmBroadcastStarted {
             cameraViewModel.stopRecording()
             viewModel.cancelPreparingBroadcast(clearError = false)
         }
@@ -249,7 +248,7 @@ fun BroadcastCameraScreen(
                 contentColor = Color.White,
             )
             OverlayChip(
-                text = "Avatar 기본",
+                text = "Avatar 자동 선택",
                 containerColor = Color.White.copy(alpha = 0.18f),
                 contentColor = Color.White,
             )
@@ -484,10 +483,10 @@ private fun BroadcastMenuPanel(
 
             PanelSection(
                 title = "개인정보 처리",
-                subtitle = "현재 안드로이드 구조에서는 Avatar 기본 모드로 방송을 시작합니다.",
+                subtitle = "방송 시작 직전에 사용 가능한 첫 아바타를 자동 선택합니다.",
             ) {
                 OverlayChip(
-                    text = "Avatar 기본",
+                    text = "Avatar 자동 선택",
                     containerColor = Color(0xFFEEF2FF),
                     contentColor = Color(0xFF4338CA),
                 )

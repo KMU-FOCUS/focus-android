@@ -43,17 +43,13 @@ class BroadcastStreamingUseCase @Inject constructor(
 
     suspend fun confirmBroadcastStarted(
         broadcastId: String,
-        avatarId: String,
     ): Result<com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast> {
         if (currentMuxerFactory == null) {
             return Result.failure(IllegalStateException("SRT 송출 준비가 완료되지 않았습니다"))
         }
 
         return try {
-            broadcastRepository.startBroadcast(
-                broadcastId = broadcastId,
-                avatarId = avatarId,
-            )
+            broadcastRepository.startBroadcast(broadcastId = broadcastId)
         } catch (throwable: Throwable) {
             Result.failure(throwable)
         }
@@ -70,7 +66,6 @@ class BroadcastStreamingUseCase @Inject constructor(
     suspend fun startBroadcast(
         broadcastId: String,
         streamKey: String,
-        avatarId: String,
         mediaMtxHost: String,
         mediaMtxPort: Int,
     ): Result<Unit> {
@@ -85,7 +80,6 @@ class BroadcastStreamingUseCase @Inject constructor(
 
         return confirmBroadcastStarted(
             broadcastId = broadcastId,
-            avatarId = avatarId,
         ).fold(
             onSuccess = { Result.success(Unit) },
             onFailure = { throwable ->
