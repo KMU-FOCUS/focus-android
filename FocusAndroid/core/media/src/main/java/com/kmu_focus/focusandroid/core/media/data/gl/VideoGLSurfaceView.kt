@@ -9,7 +9,8 @@ import java.nio.ByteBuffer
 
 class VideoGLSurfaceView(
     context: Context,
-    private val onFrameCaptured: (ByteBuffer, Int, Int) -> ProcessedFrame,
+    /** (buffer, width, height, frameTimestampNs(=SurfaceTexture native ts)) -> ProcessedFrame */
+    private val onFrameCaptured: (ByteBuffer, Int, Int, Long) -> ProcessedFrame,
     private val onSurfaceReady: (Surface) -> Unit,
     private val onRendererReleased: (() -> Unit)? = null,
 ) : GLSurfaceView(context) {

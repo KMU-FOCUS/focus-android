@@ -116,7 +116,7 @@ fun VideoPlayerScreen(
         Box(modifier = videoBoxModifier) {
             ExoPlayerGLView(
                 exoPlayer = exoPlayer,
-                onFrameCaptured = { buffer, width, height ->
+                onFrameCaptured = { buffer, width, height, _ ->
                     viewModel.processFrameSync(
                         buffer = buffer,
                         width = width,
@@ -256,7 +256,7 @@ fun VideoPlayerScreen(
 @Composable
 private fun ExoPlayerGLView(
     exoPlayer: ExoPlayer,
-    onFrameCaptured: (java.nio.ByteBuffer, Int, Int) -> ProcessedFrame,
+    onFrameCaptured: (java.nio.ByteBuffer, Int, Int, Long) -> ProcessedFrame,
     onRendererReleased: (() -> Unit)? = null,
     videoWidth: Int = 0,
     videoHeight: Int = 0,

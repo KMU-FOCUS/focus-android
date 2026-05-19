@@ -83,6 +83,58 @@ class MetadataMapperTest {
     }
 
     @Test
+    fun `isOwner true인 얼굴은 전송에서 제외된다`() {
+        val frame = MetadataMapper.mapFrame(
+            sessionId = "session-1",
+            timestampSeconds = 1.0,
+            faces = listOf(
+                MetadataMapper.FaceExportPayload(
+                    trackingId = 1,
+                    bbox = intArrayOf(0, 0, 10, 10),
+                    idCoeffs = FloatArray(219) { 0.1f },
+                    expCoeffs = FloatArray(39) { 0.2f },
+                    pose = FloatArray(6) { 0.3f },
+                    extraCoeffs = FloatArray(1) { 0.4f },
+                    isOwner = true,
+                ),
+                MetadataMapper.FaceExportPayload(
+                    trackingId = 2,
+                    bbox = intArrayOf(0, 0, 10, 10),
+                    idCoeffs = FloatArray(219) { 0.1f },
+                    expCoeffs = FloatArray(39) { 0.2f },
+                    pose = FloatArray(6) { 0.3f },
+                    extraCoeffs = FloatArray(1) { 0.4f },
+                    isOwner = false,
+                ),
+            ),
+        )
+
+        assertEquals(1, frame.faces.size)
+        assertEquals(2, frame.faces.first().trackingId)
+    }
+
+    @Test
+    fun `isOwner null인 PENDING 얼굴은 전송에서 제외된다`() {
+        val frame = MetadataMapper.mapFrame(
+            sessionId = "session-1",
+            timestampSeconds = 1.0,
+            faces = listOf(
+                MetadataMapper.FaceExportPayload(
+                    trackingId = 5,
+                    bbox = intArrayOf(0, 0, 10, 10),
+                    idCoeffs = FloatArray(219) { 0.1f },
+                    expCoeffs = FloatArray(39) { 0.2f },
+                    pose = FloatArray(6) { 0.3f },
+                    extraCoeffs = FloatArray(1) { 0.4f },
+                    isOwner = null,
+                )
+            ),
+        )
+
+        assertTrue(frame.faces.isEmpty())
+    }
+
+    @Test
     fun `source 좌표 정보가 없으면 bbox를 그대로 유지한다`() {
         val frame = MetadataMapper.mapFrame(
             sessionId = "session-1",

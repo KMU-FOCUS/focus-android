@@ -22,11 +22,13 @@ class CameraAnalysisUseCase @Inject constructor(
         width: Int,
         height: Int,
         timestampMs: Long,
+        timestampUs: Long = timestampMs * 1000L,
     ): ProcessedFrame = cameraAnalysisRepository.processFrame(
         rgbaBuffer = rgbaBuffer,
         width = width,
         height = height,
         timestampMs = timestampMs,
+        timestampUs = timestampUs,
     )
 
     fun registerOwnerFromFrame(

@@ -34,4 +34,8 @@ message TdmmRaw {
 
 message PushFaceMetadataResponse {
   bool success = 1;
+  int64 received_frames = 2;
+  int64 accepted_frames = 3;
+  int64 dropped_frames = 4;
+  int64 last_pts_us = 5;
 }

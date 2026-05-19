@@ -13,6 +13,7 @@ import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataReposi
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.OwnerRegistrationResult
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraAnalysisRepository
 import com.kmu_focus.focusandroid.core.media.data.processor.FrameProcessor
+import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
 import com.kmu_focus.focusandroid.core.media.di.IoDispatcher
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -20,6 +21,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Provider
 import kotlinx.coroutines.CoroutineDispatcher
@@ -35,6 +37,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
     private val ownerAdder: OwnerAdder,
     private val trackLabelState: TrackLabelState,
     private val embeddingExtractor: ArcFaceEmbeddingExtractor,
+    realTimeRecorder: RealTimeRecorder,
     @ApplicationContext private val context: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : CameraAnalysisRepository {
@@ -43,17 +46,25 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         private const val TAG = "CameraAnalysisRepo"
         private const val THUMBNAIL_QUALITY = 95
         private const val SNAPSHOT_DIR = "owner_snapshots"
+        private const val UNSET_PTS_BASE_US = Long.MIN_VALUE
     }
     private val metadataScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val metadataJobs = mutableSetOf<Job>()
+    private val metadataEnqueuedCount = AtomicLong(0L)
+    private val metadataDroppedBeforeBaseCount = AtomicLong(0L)
     private val metadataJobsLock = Any()
     private val metadataStateLock = Any()
     private var metadataRepository: MetadataRepository? = null
     private var metadataSessionId: String? = null
     private var metadataEnabled = false
     private var metadataFrameIndex = 0
+    private var encoderPtsBaseUs: Long = UNSET_PTS_BASE_US
     private var sourceFrameWidth = 0
     private var sourceFrameHeight = 0
+
+    init {
+        realTimeRecorder.onVideoPtsBaseSet = { baseUs -> setEncoderPtsBaseUs(baseUs) }
+    }
 
     override fun updateSourceFrameSize(
         width: Int,
@@ -130,6 +141,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         width: Int,
         height: Int,
         timestampMs: Long,
+        timestampUs: Long,
     ): ProcessedFrame {
         val frameIndex = synchronized(metadataStateLock) {
             if (metadataEnabled) {
@@ -147,7 +159,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             frameIndex = frameIndex,
         )
         if (frameIndex != null) {
-            enqueueMetadataFrame(processed)
+            enqueueMetadataFrame(processed, timestampUs)
         }
         return processed
     }
@@ -188,7 +200,18 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             metadataFrameIndex = 0
             metadataSessionId = sessionId
             metadataRepository = repository
+            encoderPtsBaseUs = UNSET_PTS_BASE_US
         }
+        metadataEnqueuedCount.set(0L)
+        metadataDroppedBeforeBaseCount.set(0L)
+        Log.i(
+            TAG,
+            "==== METADATA SESSION START ====\n" +
+                "  broadcastId(session_id) = $sessionId\n" +
+                "  repo                    = ${repository?.javaClass?.simpleName}\n" +
+                "  startedAt               = ${System.currentTimeMillis()}\n" +
+                "================================",
+        )
     }
 
     override suspend fun closeMetadataSession() {
@@ -204,14 +227,25 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             metadataRepository = null
             metadataSessionId = null
             metadataFrameIndex = 0
+            encoderPtsBaseUs = UNSET_PTS_BASE_US
             current
         }
         repo?.close()
     }
 
-    private fun enqueueMetadataFrame(frame: ProcessedFrame) {
+    override fun setEncoderPtsBaseUs(baseUs: Long) {
+        synchronized(metadataStateLock) {
+            encoderPtsBaseUs = baseUs
+        }
+        Log.i(
+            TAG,
+            "setEncoderPtsBaseUs base=$baseUs droppedBeforeBase=${metadataDroppedBeforeBaseCount.get()}",
+        )
+    }
+
+    private fun enqueueMetadataFrame(frame: ProcessedFrame, frameTimestampUs: Long) {
         val frameExport = frame.frameExport ?: return
-        val (sessionId, coordinateSpace) = synchronized(metadataStateLock) {
+        val (sessionId, coordinateSpace, baseUs) = synchronized(metadataStateLock) {
             val resolvedSessionId = metadataSessionId
                 ?: UUID.randomUUID().toString().also { metadataSessionId = it }
             val resolvedCoordinateSpace = MetadataMapper.CoordinateSpace(
@@ -220,8 +254,17 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
                 sourceWidth = sourceFrameWidth,
                 sourceHeight = sourceFrameHeight,
             ).takeIf(MetadataMapper.CoordinateSpace::isValid)
-            resolvedSessionId to resolvedCoordinateSpace
+            Triple(resolvedSessionId, resolvedCoordinateSpace, encoderPtsBaseUs)
         }
+
+        if (baseUs == UNSET_PTS_BASE_US) {
+            val dropped = metadataDroppedBeforeBaseCount.incrementAndGet()
+            if (dropped == 1L || dropped % 30L == 0L) {
+                Log.w(TAG, "dropMetadata before encoder pts base #$dropped session=$sessionId")
+            }
+            return
+        }
+
         val metadata = MetadataMapper.mapFrame(
             sessionId = sessionId,
             timestampSeconds = frameExport.timestamp,
@@ -237,7 +280,24 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
                 )
             },
             coordinateSpace = coordinateSpace,
+            ptsBaseUs = baseUs,
+            overrideTimestampUs = frameTimestampUs,
         )
+        val enqueued = metadataEnqueuedCount.incrementAndGet()
+        if (enqueued == 1L || enqueued % 60L == 0L) {
+            val firstBbox = metadata.faces.firstOrNull()?.bbox?.let {
+                "[${it.x},${it.y},${it.width}x${it.height}]"
+            } ?: "<none>"
+            Log.i(
+                TAG,
+                "enqueueMetadata #$enqueued session=$sessionId pts_us=${metadata.ptsUs} " +
+                    "rawUs=$frameTimestampUs base=$baseUs delta=${frameTimestampUs - baseUs} " +
+                    "rawFaces=${frameExport.faces.size} sendFaces=${metadata.faces.size} " +
+                    "analysis=${frame.frameWidth}x${frame.frameHeight} " +
+                    "source=${sourceFrameWidth}x${sourceFrameHeight} " +
+                    "firstBbox=$firstBbox",
+            )
+        }
 
         launchMetadataJob {
             val repo = synchronized(metadataStateLock) {
@@ -251,7 +311,9 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
 
     private fun launchMetadataJob(block: suspend () -> Unit) {
         val job = metadataScope.launch {
-            runCatching { block() }
+            runCatching { block() }.onFailure { throwable ->
+                Log.e(TAG, "metadata sendFrame failed", throwable)
+            }
         }
         synchronized(metadataJobsLock) {
             metadataJobs += job

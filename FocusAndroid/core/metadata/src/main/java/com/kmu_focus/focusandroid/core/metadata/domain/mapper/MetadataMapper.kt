@@ -39,12 +39,20 @@ object MetadataMapper {
         timestampSeconds: Double,
         faces: List<FaceExportPayload>,
         coordinateSpace: CoordinateSpace? = null,
+        ptsBaseUs: Long = 0L,
+        /**
+         * 인코더 PTS와 동일 nano 타임라인의 frame timestamp(microseconds).
+         * 지정 시 timestampSeconds 대신 사용. millisecond 정밀도로는 base 와의 차이가
+         * 항상 음수가 되어 0으로 clamp되는 정밀도 손실을 피하기 위해 도입.
+         */
+        overrideTimestampUs: Long? = null,
     ): FrameMetadata {
-        val ptsUs = if (timestampSeconds.isFinite()) {
-            (timestampSeconds * MICROS_PER_SECOND).toLong()
-        } else {
-            0L
+        val rawPtsUs = when {
+            overrideTimestampUs != null -> overrideTimestampUs
+            timestampSeconds.isFinite() -> (timestampSeconds * MICROS_PER_SECOND).toLong()
+            else -> 0L
         }
+        val ptsUs = (rawPtsUs - ptsBaseUs).coerceAtLeast(0L)
 
         val mappedFaces = faces.asSequence()
             .filter { it.isOwner == false }

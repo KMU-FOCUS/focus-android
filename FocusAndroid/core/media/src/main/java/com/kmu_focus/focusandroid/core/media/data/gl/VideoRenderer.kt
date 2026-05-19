@@ -41,7 +41,11 @@ private const val PRIVACY_MASK_DEFAULT_B = 0.58f
  * 인코더에는 분석이 완료된 동일 프레임 텍스처만 전달해 privacy mask와 원본 프레임이 어긋나지 않게 유지한다.
  */
 class VideoRenderer(
-    private val onFrameCaptured: (ByteBuffer, Int, Int) -> ProcessedFrame,
+    /**
+     * 분석 콜백. SurfaceTexture frame 의 native timestamp(nanoseconds, elapsedRealtimeNanos 기준)도 함께 전달한다.
+     * 인코더 PTS와 동일 타임라인이므로 metadata pts_us 를 정확히 동기화할 때 사용.
+     */
+    private val onFrameCaptured: (ByteBuffer, Int, Int, Long) -> ProcessedFrame,
     private val onSurfaceReady: (Surface) -> Unit,
     private val onRendererReleased: (() -> Unit)? = null,
     private val encoderThread: EncoderThread = EncoderThread(),
@@ -113,6 +117,13 @@ class VideoRenderer(
     private var lastEncoderTimestampNs: Long = Long.MIN_VALUE
     private var lastAnalysisTimestampNs: Long = Long.MIN_VALUE
     private var lastFrameTimestampNs: Long = Long.MIN_VALUE
+
+    /**
+     * PBO는 1 frame 지연되어 픽셀을 반환한다(N번째 draw에서 N-1번째 frame의 pixel을 받음).
+     * 따라서 analysisBuffer 에 대응하는 SurfaceTexture timestamp 는 "현재" frame timestamp 가 아닌
+     * "이전 frame" 의 timestamp. metadata pts 를 인코더 PTS 와 정확히 일치시키기 위해 보관.
+     */
+    private var pendingAnalysisFrameTimestampNs: Long = 0L
     private var previousPrivacyEllipses: List<EllipseParams> = emptyList()
     private val privacyMaskColorsByTrackId = LinkedHashMap<Int, PrivacyMaskColorState>()
 
@@ -316,9 +327,17 @@ class VideoRenderer(
             var encoderTextureIdForSubmit = 0
             val analysisBuffer = pboReader.readPixelsAsync()
             if (analysisBuffer != null && (recordingEnabled || shouldAnalyzeFrame(frameTimestampNs))) {
-                processedFrame = onFrameCaptured(analysisBuffer, viewWidth, viewHeight)
+                // analysisBuffer 는 PBO 1 frame 지연으로 "이전 frame" 의 pixel.
+                // 그래서 그 frame 의 SurfaceTexture timestamp 를 박아야 인코더 PTS 와 정확히 매칭됨.
+                processedFrame = onFrameCaptured(
+                    analysisBuffer,
+                    viewWidth,
+                    viewHeight,
+                    pendingAnalysisFrameTimestampNs,
+                )
                 lastAnalysisTimestampNs = resolveAnalysisTimestampNs(frameTimestampNs)
             }
+            pendingAnalysisFrameTimestampNs = frameTimestampNs
             val previewSelection = resolvePreviewFrameSelection(
                 recordingEnabled = recordingEnabled,
                 processedFrame = processedFrame,
@@ -511,6 +530,7 @@ class VideoRenderer(
         isPreviewSynchronizedToAnalysis = false
         lastAnalysisTimestampNs = Long.MIN_VALUE
         lastFrameTimestampNs = Long.MIN_VALUE
+        pendingAnalysisFrameTimestampNs = 0L
         previousPrivacyEllipses = emptyList()
         privacyMaskColorsByTrackId.clear()
     }

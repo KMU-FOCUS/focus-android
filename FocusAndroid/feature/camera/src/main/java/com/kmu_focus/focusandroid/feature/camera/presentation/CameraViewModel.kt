@@ -141,6 +141,7 @@ class CameraViewModel @Inject constructor(
         buffer: ByteBuffer,
         width: Int,
         height: Int,
+        frameTimestampNs: Long = android.os.SystemClock.elapsedRealtimeNanos(),
     ): ProcessedFrame? {
         val currentState = _uiState.value
         if (!currentState.isCameraActive || !currentState.isDetecting) return null
@@ -149,7 +150,8 @@ class CameraViewModel @Inject constructor(
             rgbaBuffer = buffer,
             width = width,
             height = height,
-            timestampMs = System.currentTimeMillis(),
+            timestampMs = frameTimestampNs / 1_000_000L,
+            timestampUs = frameTimestampNs / 1_000L,
         )
 
         val pendingTrackId = pendingOwnerRegistrationTrackId

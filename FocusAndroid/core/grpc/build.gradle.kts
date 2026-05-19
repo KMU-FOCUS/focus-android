@@ -31,10 +31,16 @@ val grpcServerHost = localProperties
     ?: throw GradleException("gRPC 서버 호스트를 확인할 수 없습니다.")
 
 val grpcServerPort = localProperties
-    .getProperty("grpcServerPort", "50051")
+    .getProperty("grpcServerPort", "443")
     .trim()
     .toIntOrNull()
-    ?: 50051
+    ?: 443
+
+val grpcUseTls = localProperties
+    .getProperty("grpcUseTls", "true")
+    .trim()
+    .toBooleanStrictOrNull()
+    ?: true
 
 android {
     namespace = "com.kmu_focus.focusandroid.core.grpc"
@@ -45,6 +51,7 @@ android {
         consumerProguardFiles("consumer-rules.pro")
         buildConfigField("String", "GRPC_SERVER_HOST", "\"$grpcServerHost\"")
         buildConfigField("int", "GRPC_SERVER_PORT", grpcServerPort.toString())
+        buildConfigField("boolean", "GRPC_USE_TLS", grpcUseTls.toString())
     }
 
     buildFeatures {

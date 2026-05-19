@@ -72,6 +72,14 @@ class RealTimeRecorder(
     private var videoPtsBaseUs: Long = Long.MIN_VALUE
 
     /**
+     * 인코더 출력 첫 비디오 sample이 결정될 때(=SRT/MP4 muxer가 사용할 PTS base가 확정될 때) 호출.
+     * metadata 파이프라인이 동일한 base로 pts_us를 rebase 하기 위해 사용.
+     * 단위: microseconds. SurfaceTexture nanoTime / 1000 기준.
+     */
+    @Volatile
+    var onVideoPtsBaseSet: ((baseUs: Long) -> Unit)? = null
+
+    /**
      * 비디오 인코더 + Muxer를 초기화하고, 인코더 입력 Surface를 콜백으로 전달한다.
      *
      * @param width 인코딩 해상도 (픽셀)
@@ -245,6 +253,8 @@ class RealTimeRecorder(
                         if (bufferInfo.size > 0 && muxerStarted && videoTrackIndex >= 0) {
                             if (videoPtsBaseUs == Long.MIN_VALUE) {
                                 videoPtsBaseUs = bufferInfo.presentationTimeUs
+                                runCatching { onVideoPtsBaseSet?.invoke(videoPtsBaseUs) }
+                                    .onFailure { Log.w(loggerTag, "onVideoPtsBaseSet 콜백 실패", it) }
                             }
                             val rebasedVideoPtsUs = (bufferInfo.presentationTimeUs - videoPtsBaseUs).coerceAtLeast(0L)
                             encodedData.position(bufferInfo.offset)
