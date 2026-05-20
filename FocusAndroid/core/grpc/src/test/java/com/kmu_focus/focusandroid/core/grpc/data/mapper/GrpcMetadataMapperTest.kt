@@ -5,6 +5,7 @@ import com.kmu_focus.focusandroid.core.metadata.domain.entity.FaceData
 import com.kmu_focus.focusandroid.core.metadata.domain.entity.FrameMetadata
 import com.kmu_focus.focusandroid.core.metadata.domain.entity.ThreeDMM
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class GrpcMetadataMapperTest {
@@ -99,6 +100,25 @@ class GrpcMetadataMapperTest {
         assertEquals(265, protoCoeffs.size)
         assertEquals(0.0f, protoCoeffs[0], 0.001f)
         assertEquals(2.64f, protoCoeffs[264], 0.001f)
+    }
+
+    @Test
+    fun `tdmm이 없으면 proto의 tdmm_raw도 생략된다`() {
+        val metadata = FrameMetadata(
+            sessionId = "broadcast-123",
+            ptsUs = 100_000L,
+            faces = listOf(
+                FaceData(
+                    trackingId = 9,
+                    bbox = BBox(x = 10, y = 20, width = 30, height = 40),
+                    tdmm = null,
+                ),
+            ),
+        )
+
+        val proto = GrpcMetadataMapper.toProto(metadata)
+
+        assertFalse(proto.getFaces(0).hasTdmmRaw())
     }
 
     @Test

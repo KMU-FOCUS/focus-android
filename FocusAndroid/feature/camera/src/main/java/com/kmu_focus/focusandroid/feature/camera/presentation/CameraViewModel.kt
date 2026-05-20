@@ -240,6 +240,7 @@ class CameraViewModel @Inject constructor(
         if (!currentState.isCameraActive || !currentState.isDetecting || currentState.isRecording) return
 
         viewModelScope.launch(ioDispatcher) {
+            cameraAnalysisUseCase.setBroadcastSourceOverride(width = width, height = height)
             cameraAnalysisUseCase.startMetadataSession(
                 repository = metadataRepository,
                 sessionId = sessionId,
@@ -270,6 +271,7 @@ class CameraViewModel @Inject constructor(
                 onFailure = {
                     currentRecordingFile = null
                     clearEncoderSurface()
+                    cameraAnalysisUseCase.setBroadcastSourceOverride(0, 0)
                     _uiState.value = _uiState.value.copy(isRecording = false)
                 },
             )
@@ -375,6 +377,7 @@ class CameraViewModel @Inject constructor(
         val stopAction: suspend () -> Unit = {
             cameraRecordingUseCase.stopRecording()
             cameraAnalysisUseCase.closeMetadataSession()
+            cameraAnalysisUseCase.setBroadcastSourceOverride(0, 0)
             currentRecordingFile = null
             if (fileToEmit != null) {
                 _uiState.value = _uiState.value.copy(recordingFile = fileToEmit)

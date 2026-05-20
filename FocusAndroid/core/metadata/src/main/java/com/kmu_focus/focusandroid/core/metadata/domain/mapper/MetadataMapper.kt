@@ -34,6 +34,20 @@ object MetadataMapper {
         val isOwner: Boolean?,
     )
 
+    data class DropStats(
+        var pending: Int = 0,
+        var owner: Int = 0,
+        var invalidBbox: Int = 0,
+        var tdmmOmittedMissingCoeffs: Int = 0,
+        var tdmmOmittedUnsupportedLayout: Int = 0,
+    ) {
+        val total: Int get() = pending + owner + invalidBbox
+        override fun toString(): String =
+            "pending=$pending owner=$owner invalidBbox=$invalidBbox " +
+                "tdmmOmittedMissingCoeffs=$tdmmOmittedMissingCoeffs " +
+                "tdmmOmittedUnsupportedLayout=$tdmmOmittedUnsupportedLayout"
+    }
+
     fun mapFrame(
         sessionId: String,
         timestampSeconds: Double,
@@ -46,6 +60,8 @@ object MetadataMapper {
          * 항상 음수가 되어 0으로 clamp되는 정밀도 손실을 피하기 위해 도입.
          */
         overrideTimestampUs: Long? = null,
+        /** drop 발생 시 reason 별로 카운트. 호출자가 통계 보고 싶을 때 사용. */
+        dropStats: DropStats? = null,
     ): FrameMetadata {
         val rawPtsUs = when {
             overrideTimestampUs != null -> overrideTimestampUs
@@ -55,35 +71,51 @@ object MetadataMapper {
         val ptsUs = (rawPtsUs - ptsBaseUs).coerceAtLeast(0L)
 
         val mappedFaces = faces.asSequence()
-            .filter { it.isOwner == false }
-            .mapNotNull { face ->
-                val id = face.idCoeffs
-                val exp = face.expCoeffs
-                val pose = face.pose
-                if (id == null || exp == null || pose == null) {
-                    logDrop("missing coeffs", face)
-                    return@mapNotNull null
+            .filter { face ->
+                when (face.isOwner) {
+                    null -> { dropStats?.pending = (dropStats?.pending ?: 0) + 1; false }
+                    true -> { dropStats?.owner = (dropStats?.owner ?: 0) + 1; false }
+                    false -> true
                 }
+            }
+            .mapNotNull { face ->
                 if (face.bbox.size < BBOX_SIZE) {
+                    dropStats?.invalidBbox = (dropStats?.invalidBbox ?: 0) + 1
                     logDrop("invalid bbox size=${face.bbox.size}", face)
                     return@mapNotNull null
                 }
-                val extra = face.extraCoeffs ?: floatArrayOf()
-                val idDim = id.size
-                val expDim = exp.size
-                val poseDim = pose.size
-                val extraDim = extra.size
-                if (!isFaceMapLayout(idDim, expDim, poseDim, extraDim)) {
-                    logDrop(
-                        reason = "unsupported FaceMap layout(id=$idDim, exp=$expDim, pose=$poseDim, extra=$extraDim)",
-                        face = face,
-                    )
-                    return@mapNotNull null
-                }
+
+                val id = face.idCoeffs
+                val exp = face.expCoeffs
+                val pose = face.pose
                 val mappedBbox = mapBoundingBoxToSourcePixelSpace(
                     bbox = face.bbox,
                     coordinateSpace = coordinateSpace,
                 )
+                val tdmm = when {
+                    id == null || exp == null || pose == null -> {
+                        dropStats?.tdmmOmittedMissingCoeffs =
+                            (dropStats?.tdmmOmittedMissingCoeffs ?: 0) + 1
+                        null
+                    }
+
+                    else -> {
+                        val extra = face.extraCoeffs ?: floatArrayOf()
+                        val idDim = id.size
+                        val expDim = exp.size
+                        val poseDim = pose.size
+                        val extraDim = extra.size
+                        if (!isFaceMapLayout(idDim, expDim, poseDim, extraDim)) {
+                            dropStats?.tdmmOmittedUnsupportedLayout =
+                                (dropStats?.tdmmOmittedUnsupportedLayout ?: 0) + 1
+                            null
+                        } else {
+                            ThreeDMM(
+                                coeffs = concatCoeffs(id, exp, pose, extra),
+                            )
+                        }
+                    }
+                }
 
                 FaceData(
                     trackingId = face.trackingId,
@@ -93,9 +125,7 @@ object MetadataMapper {
                         width = mappedBbox[2],
                         height = mappedBbox[3],
                     ),
-                    tdmm = ThreeDMM(
-                        coeffs = concatCoeffs(id, exp, pose, extra),
-                    ),
+                    tdmm = tdmm,
                 )
             }
             .toList()

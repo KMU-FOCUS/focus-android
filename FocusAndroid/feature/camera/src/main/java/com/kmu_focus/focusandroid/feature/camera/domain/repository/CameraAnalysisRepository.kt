@@ -11,6 +11,16 @@ interface CameraAnalysisRepository {
         height: Int,
     ) {}
 
+    /**
+     * 라이브 송출(broadcast) 시 metadata bbox 의 좌표 reference 해상도를 명시적으로 지정.
+     * bbox 는 preview 가 아니라 실제 SRT 송출 프레임 pixel 좌표계 기준이어야 한다.
+     * 0/0 으로 호출하면 override 해제 (기본 source frame 기준 사용).
+     */
+    fun setBroadcastSourceOverride(
+        width: Int,
+        height: Int,
+    ) {}
+
     fun processFrame(
         rgbaBuffer: ByteBuffer,
         width: Int,

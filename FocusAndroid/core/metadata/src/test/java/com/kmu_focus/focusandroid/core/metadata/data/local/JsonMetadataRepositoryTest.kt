@@ -74,6 +74,28 @@ class JsonMetadataRepositoryTest {
     }
 
     @Test
+    fun `tdmm이 없는 얼굴은 JSON에서 tdmm_raw가 생략된다`() = runTest {
+        repository.sendFrame(
+            FrameMetadata(
+                sessionId = "test-session",
+                ptsUs = 100000L,
+                faces = listOf(
+                    FaceData(
+                        trackingId = 1,
+                        bbox = BBox(10, 20, 30, 40),
+                        tdmm = null,
+                    )
+                ),
+            )
+        )
+        repository.close()
+
+        val json = outputDir.listFiles()!!.first().readText()
+        assertTrue(json.contains("\"tracking_id\":1"))
+        assertTrue(!json.contains("tdmm_raw"))
+    }
+
+    @Test
     fun `여러 프레임 전송 후 close하면 모든 프레임이 저장된다`() = runTest {
         repeat(10) { i ->
             repository.sendFrame(

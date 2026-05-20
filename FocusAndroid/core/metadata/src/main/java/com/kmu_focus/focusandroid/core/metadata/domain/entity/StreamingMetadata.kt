@@ -9,7 +9,7 @@ data class FrameMetadata(
 data class FaceData(
     val trackingId: Int,
     val bbox: BBox,
-    val tdmm: ThreeDMM,
+    val tdmm: ThreeDMM? = null,
 )
 
 data class BBox(

@@ -133,14 +133,11 @@ class MetadataPreviewParser @Inject constructor() {
 
     private fun parseFace(faceJson: JSONObject): FaceData {
         val bbox = parseBoundingBox(faceJson)
-        val coeffs = parseCoefficients(faceJson)
 
         return FaceData(
             trackingId = faceJson.optInt("tracking_id"),
             bbox = bbox,
-            tdmm = ThreeDMM(
-                coeffs = coeffs,
-            ),
+            tdmm = parseTdmm(faceJson),
         )
     }
 
@@ -168,19 +165,20 @@ class MetadataPreviewParser @Inject constructor() {
         throw IllegalArgumentException("지원하지 않는 bbox 형식입니다.")
     }
 
-    private fun parseCoefficients(faceJson: JSONObject): FloatArray {
-        val tdmmRaw = faceJson.optJSONObject("tdmm_raw")?.optJSONArray("coeffs")
-        if (tdmmRaw != null) {
-            return tdmmRaw.toFloatArray()
+    private fun parseTdmm(faceJson: JSONObject): ThreeDMM? {
+        faceJson.optJSONObject("tdmm_raw")?.let { tdmmRaw ->
+            return ThreeDMM(
+                coeffs = tdmmRaw.optJSONArray("coeffs").toFloatArray(),
+            )
         }
 
-        val raw3dmm = faceJson.optJSONObject("3dmm") ?: return FloatArray(0)
+        val raw3dmm = faceJson.optJSONObject("3dmm") ?: return null
         val values = ArrayList<Float>()
         appendCoefficients(values, raw3dmm.optJSONArray("id_coeffs"))
         appendCoefficients(values, raw3dmm.optJSONArray("exp_coeffs"))
         appendCoefficients(values, raw3dmm.optJSONArray("pose"))
         appendCoefficients(values, raw3dmm.optJSONArray("extra_coeffs"))
-        return values.toFloatArray()
+        return ThreeDMM(coeffs = values.toFloatArray())
     }
 
     private fun appendCoefficients(

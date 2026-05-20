@@ -1,13 +1,14 @@
 package com.kmu_focus.focusandroid.core.metadata.domain.mapper
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MetadataMapperTest {
 
     @Test
-    fun `isFaceMapLayout과 맞지 않으면 face가 드롭된다`() {
+    fun `isFaceMapLayout과 맞지 않으면 face는 유지되고 tdmm만 생략된다`() {
         val frame = MetadataMapper.mapFrame(
             sessionId = "session-1",
             timestampSeconds = 1.0,
@@ -24,7 +25,9 @@ class MetadataMapperTest {
             ),
         )
 
-        assertTrue(frame.faces.isEmpty())
+        assertEquals(1, frame.faces.size)
+        assertEquals(10, frame.faces.first().trackingId)
+        assertNull(frame.faces.first().tdmm)
     }
 
     @Test
@@ -47,7 +50,7 @@ class MetadataMapperTest {
 
         assertEquals(1, frame.faces.size)
         assertEquals(11, frame.faces.first().trackingId)
-        assertEquals(265, frame.faces.first().tdmm.coeffs.size)
+        assertEquals(265, frame.faces.first().tdmm!!.coeffs.size)
         assertEquals(1_234_567L, frame.ptsUs)
     }
 
@@ -111,6 +114,33 @@ class MetadataMapperTest {
 
         assertEquals(1, frame.faces.size)
         assertEquals(2, frame.faces.first().trackingId)
+    }
+
+    @Test
+    fun `3dmm coeffs가 없어도 bbox는 유지되고 tdmm만 생략된다`() {
+        val frame = MetadataMapper.mapFrame(
+            sessionId = "session-1",
+            timestampSeconds = 1.0,
+            faces = listOf(
+                MetadataMapper.FaceExportPayload(
+                    trackingId = 21,
+                    bbox = intArrayOf(50, 60, 70, 80),
+                    idCoeffs = null,
+                    expCoeffs = null,
+                    pose = null,
+                    extraCoeffs = null,
+                    isOwner = false,
+                )
+            ),
+        )
+
+        assertEquals(1, frame.faces.size)
+        assertEquals(21, frame.faces.first().trackingId)
+        assertNull(frame.faces.first().tdmm)
+        assertEquals(50, frame.faces.first().bbox.x)
+        assertEquals(60, frame.faces.first().bbox.y)
+        assertEquals(70, frame.faces.first().bbox.width)
+        assertEquals(80, frame.faces.first().bbox.height)
     }
 
     @Test

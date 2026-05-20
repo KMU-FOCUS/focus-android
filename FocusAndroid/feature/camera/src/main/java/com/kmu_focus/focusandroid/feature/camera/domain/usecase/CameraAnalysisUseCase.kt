@@ -17,6 +17,13 @@ class CameraAnalysisUseCase @Inject constructor(
         cameraAnalysisRepository.updateSourceFrameSize(width, height)
     }
 
+    fun setBroadcastSourceOverride(
+        width: Int,
+        height: Int,
+    ) {
+        cameraAnalysisRepository.setBroadcastSourceOverride(width, height)
+    }
+
     fun processFrame(
         rgbaBuffer: ByteBuffer,
         width: Int,

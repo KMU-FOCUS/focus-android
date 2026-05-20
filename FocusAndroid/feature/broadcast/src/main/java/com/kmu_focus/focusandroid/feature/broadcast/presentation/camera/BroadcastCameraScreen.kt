@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.kmu_focus.focusandroid.core.ui.insets.focusSafeDrawingPadding
 import com.kmu_focus.focusandroid.core.grpc.data.repository.GrpcMetadataRepositoryImpl
+import com.kmu_focus.focusandroid.core.media.data.recorder.Mp4VideoMuxerFactory
+import com.kmu_focus.focusandroid.core.media.data.recorder.TeeVideoMuxerFactory
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraScreen
@@ -57,6 +59,21 @@ private const val DEFAULT_BROADCAST_HEIGHT = 720
 private const val BROADCAST_START_DELAY_MS = 2_000L
 private const val RECORDING_START_TIMEOUT_MS = 5_000L
 private const val START_API_TIMEOUT_MS = 12_000L
+
+/**
+ * 영상 분석 metadata 와 동일한 base dir (`externalFilesDir/Documents/metadata/{broadcastId}`)
+ * 에 라이브 송출 영상 MP4 도 같이 저장. 분석 path 와 1:1 비교용.
+ */
+private fun createDebugBroadcastRecordingFile(
+    context: Context,
+    broadcastId: String,
+): File {
+    val safeId = broadcastId.ifBlank { "unknown" }
+    val baseDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS)
+        ?: context.filesDir
+    val dir = File(baseDir, "metadata/$safeId").apply { mkdirs() }
+    return File(dir, "recording_${System.currentTimeMillis()}.mp4")
+}
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
@@ -119,16 +136,30 @@ fun BroadcastCameraScreen(
         viewModel.currentMuxerFactory,
         uiState.broadcastId,
     ) {
-        val muxerFactory = viewModel.currentMuxerFactory ?: return@LaunchedEffect
+        val srtMuxerFactory = viewModel.currentMuxerFactory ?: return@LaunchedEffect
         if (!uiState.isPreparing || hasStartedRecorder || cameraUiState.isRecording) {
             return@LaunchedEffect
         }
+
+        val debugRecordingFile = createDebugBroadcastRecordingFile(context, uiState.broadcastId)
+        val teeMuxerFactory = TeeVideoMuxerFactory(
+            primaryFactory = srtMuxerFactory,
+            secondaryFactory = Mp4VideoMuxerFactory(),
+            secondaryOutputFileProvider = { _ -> debugRecordingFile },
+        )
+        android.util.Log.i(
+            "BroadcastDebugDump",
+            "==== DEBUG RECORDING ====\n" +
+                "  broadcastId = ${uiState.broadcastId}\n" +
+                "  mp4Path     = ${debugRecordingFile.absolutePath}\n" +
+                "=========================",
+        )
 
         hasStartedRecorder = true
         cameraViewModel.startBroadcastRecording(
             width = DEFAULT_BROADCAST_WIDTH,
             height = DEFAULT_BROADCAST_HEIGHT,
-            muxerFactory = muxerFactory,
+            muxerFactory = teeMuxerFactory,
             metadataRepository = metadataRepository,
             sessionId = uiState.broadcastId,
         )

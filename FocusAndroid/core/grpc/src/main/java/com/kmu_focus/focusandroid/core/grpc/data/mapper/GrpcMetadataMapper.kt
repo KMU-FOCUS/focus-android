@@ -23,11 +23,15 @@ object GrpcMetadataMapper {
                                 .setHeight(face.bbox.height)
                                 .build()
                         )
-                        .setTdmmRaw(
-                            TdmmRaw.newBuilder()
-                                .addAllCoeffs(face.tdmm.coeffs.toList())
-                                .build()
-                        )
+                        .apply {
+                            face.tdmm?.let { tdmm ->
+                                setTdmmRaw(
+                                    TdmmRaw.newBuilder()
+                                        .addAllCoeffs(tdmm.coeffs.toList())
+                                        .build()
+                                )
+                            }
+                        }
                         .build()
                 }
             )

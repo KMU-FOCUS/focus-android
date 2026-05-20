@@ -77,11 +77,13 @@ class JsonMetadataRepository @Inject constructor(
         builder.append("\"width\":").append(face.bbox.width).append(',')
         builder.append("\"height\":").append(face.bbox.height)
         builder.append('}')
-        builder.append(',')
-        builder.append("\"tdmm_raw\":{")
-        builder.append("\"coeffs\":")
-        appendFloatArray(builder, face.tdmm.coeffs)
-        builder.append('}')
+        face.tdmm?.let { tdmm ->
+            builder.append(',')
+            builder.append("\"tdmm_raw\":{")
+            builder.append("\"coeffs\":")
+            appendFloatArray(builder, tdmm.coeffs)
+            builder.append('}')
+        }
         builder.append('}')
     }
 
@@ -101,9 +103,9 @@ class JsonMetadataRepository @Inject constructor(
     private fun FrameMetadata.deepCopy(): FrameMetadata = copy(
         faces = faces.map { face ->
             face.copy(
-                tdmm = face.tdmm.copy(
-                    coeffs = face.tdmm.coeffs.copyOf(),
-                )
+                tdmm = face.tdmm?.let { tdmm ->
+                    tdmm.copy(coeffs = tdmm.coeffs.copyOf())
+                }
             )
         }
     )

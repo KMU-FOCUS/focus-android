@@ -58,6 +58,7 @@ class MetadataPreviewParserTest {
 
         assertNotNull(firstFrame)
         assertEquals(2, firstFrame?.faces?.size)
+        assertNull(firstFrame?.faces?.get(1)?.tdmm)
         assertEquals(7, secondFrame?.faces?.singleOrNull()?.trackingId)
         assertNull(outOfWindowFrame)
     }
