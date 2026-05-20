@@ -46,6 +46,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
 
     companion object {
         private const val TAG = "CameraAnalysisRepo"
+        private const val MAX_BROADCAST_METADATA_FACE_COUNT = 5
         private const val THUMBNAIL_QUALITY = 95
         private const val SNAPSHOT_DIR = "owner_snapshots"
         private const val UNSET_PTS_BASE_US = Long.MIN_VALUE
@@ -67,6 +68,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
     private var sourceFrameHeight = 0
     private var broadcastSourceWidth = 0
     private var broadcastSourceHeight = 0
+    private var limitBroadcastMetadataFaces = false
     private var metadataDumpRepository: JsonMetadataRepository? = null
     private var metadataDumpDir: File? = null
 
@@ -223,6 +225,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             metadataSessionId = sessionId
             metadataRepository = repository
             encoderPtsBaseUs = UNSET_PTS_BASE_US
+            limitBroadcastMetadataFaces = repository != null && sessionId != null
         }
         metadataEnqueuedCount.set(0L)
         metadataDroppedBeforeBaseCount.set(0L)
@@ -297,6 +300,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             metadataSessionId = null
             metadataFrameIndex = 0
             encoderPtsBaseUs = UNSET_PTS_BASE_US
+            limitBroadcastMetadataFaces = false
             current
         }
         repo?.close()
@@ -340,20 +344,31 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         val rawCoeffNullCount = frameExport.faces.count {
             it.idCoeffs == null || it.expCoeffs == null || it.pose == null
         }
+        val facePayloads = frameExport.faces.map { face ->
+            MetadataMapper.FaceExportPayload(
+                trackingId = face.trackingId,
+                bbox = face.bbox,
+                idCoeffs = face.idCoeffs,
+                expCoeffs = face.expCoeffs,
+                pose = face.pose,
+                extraCoeffs = face.extraCoeffs,
+                isOwner = face.isOwner,
+            )
+        }
+        val limitedFacePayloads = if (limitBroadcastMetadataFaces) {
+            limitBroadcastMetadataFacesForStreaming(
+                faces = facePayloads,
+                maxFaceCount = MAX_BROADCAST_METADATA_FACE_COUNT,
+            )
+        } else {
+            facePayloads
+        }
+        val faceCapDroppedCount =
+            facePayloads.count { it.isOwner == false } - limitedFacePayloads.count { it.isOwner == false }
         val metadata = MetadataMapper.mapFrame(
             sessionId = sessionId,
             timestampSeconds = frameExport.timestamp,
-            faces = frameExport.faces.map { face ->
-                MetadataMapper.FaceExportPayload(
-                    trackingId = face.trackingId,
-                    bbox = face.bbox,
-                    idCoeffs = face.idCoeffs,
-                    expCoeffs = face.expCoeffs,
-                    pose = face.pose,
-                    extraCoeffs = face.extraCoeffs,
-                    isOwner = face.isOwner,
-                )
-            },
+            faces = limitedFacePayloads,
             coordinateSpace = coordinateSpace,
             ptsBaseUs = baseUs,
             overrideTimestampUs = frameTimestampUs,
@@ -371,6 +386,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
                 "enqueueMetadata #$enqueued session=$sessionId pts_us=${metadata.ptsUs} " +
                     "rawUs=$frameTimestampUs base=$baseUs delta=${frameTimestampUs - baseUs} " +
                     "rawFaces=${frameExport.faces.size} sendFaces=${metadata.faces.size} " +
+                    "faceCapDropped=$faceCapDroppedCount " +
                     "drop[$dropStats rawCoeffNull=$rawCoeffNullCount] " +
                     "analysis=${frame.frameWidth}x${frame.frameHeight} " +
                     "source=${activeSrcW}x${activeSrcH}" +
@@ -418,4 +434,36 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         }
         file.absolutePath
     }.getOrNull()
+}
+
+internal fun limitBroadcastMetadataFacesForStreaming(
+    faces: List<MetadataMapper.FaceExportPayload>,
+    maxFaceCount: Int,
+): List<MetadataMapper.FaceExportPayload> {
+    if (maxFaceCount <= 0) {
+        return faces.filter { it.isOwner != false }
+    }
+
+    val nonOwnerFaces = faces.withIndex().filter { it.value.isOwner == false }
+    if (nonOwnerFaces.size <= maxFaceCount) {
+        return faces
+    }
+
+    val selectedIndices = nonOwnerFaces
+        .sortedWith(
+            compareByDescending<IndexedValue<MetadataMapper.FaceExportPayload>> {
+                faceBoundingBoxArea(it.value.bbox)
+            }.thenBy { it.index },
+        )
+        .take(maxFaceCount)
+        .mapTo(linkedSetOf()) { it.index }
+
+    return faces.filterIndexed { index, face ->
+        face.isOwner != false || index in selectedIndices
+    }
+}
+
+private fun faceBoundingBoxArea(bbox: IntArray): Long {
+    if (bbox.size < 4) return 0L
+    return bbox[2].toLong().coerceAtLeast(0L) * bbox[3].toLong().coerceAtLeast(0L)
 }
