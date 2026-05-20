@@ -44,6 +44,12 @@ interface CameraAnalysisRepository {
         processedFrame: ProcessedFrame,
     ): OwnerRegistrationResult
 
+    fun removeOwner(
+        ownerId: Int,
+        trackId: Int,
+        thumbnailPath: String? = null,
+    ): Boolean = false
+
     fun clearProcessingThreadCache()
 
     fun resetSessionState()

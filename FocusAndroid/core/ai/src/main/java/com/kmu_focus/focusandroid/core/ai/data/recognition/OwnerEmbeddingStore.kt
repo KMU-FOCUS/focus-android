@@ -78,6 +78,16 @@ class OwnerEmbeddingStore @Inject constructor(
         return true
     }
 
+    override fun removeOwner(ownerId: Int): Boolean {
+        if (ownerId !in embeddings.indices) {
+            Log.w(TAG, "removeOwner: invalid ownerId=$ownerId")
+            return false
+        }
+        embeddings.removeAt(ownerId)
+        Log.i(TAG, "removeOwner: ownerId=$ownerId 삭제, 총 ${embeddings.size}명")
+        return true
+    }
+
     override fun getMasterEmbeddings(): List<List<FloatArray>> = embeddings.toList()
 
     override fun clearOwners() {

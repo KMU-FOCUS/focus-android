@@ -17,8 +17,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import coil.compose.AsyncImage
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -49,6 +51,7 @@ import com.kmu_focus.focusandroid.core.media.data.recorder.Mp4VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.data.recorder.TeeVideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
+import com.kmu_focus.focusandroid.feature.camera.domain.entity.RegisteredOwner
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraScreen
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraViewModel
 import dagger.hilt.EntryPoint
@@ -109,6 +112,7 @@ fun BroadcastCameraScreen(
     var isMenuPresented by rememberSaveable { mutableStateOf(false) }
     var liveStartedAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     var latestRecordingFilePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingOwnerDeletion by remember { mutableStateOf<RegisteredOwner?>(null) }
 
     LaunchedEffect(cameraUiState.isCameraActive) {
         if (cameraUiState.isCameraActive && !cameraUiState.isDetecting) {
@@ -265,6 +269,7 @@ fun BroadcastCameraScreen(
 
     BackHandler {
         when {
+            pendingOwnerDeletion != null -> pendingOwnerDeletion = null
             isMenuPresented -> isMenuPresented = false
             uiState.completedReport != null && !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping -> {
                 viewModel.dismissCompletedReport()
@@ -412,7 +417,7 @@ fun BroadcastCameraScreen(
             BroadcastMenuPanel(
                 lensFacing = cameraUiState.lensFacing,
                 privacyMode = cameraUiState.privacyMode,
-                ownerThumbnailPaths = cameraUiState.registeredOwnerThumbnails,
+                registeredOwners = cameraUiState.registeredOwners,
                 onDismiss = { isMenuPresented = false },
                 onSelectLensFacing = { target ->
                     if (cameraUiState.lensFacing != target) {
@@ -420,6 +425,7 @@ fun BroadcastCameraScreen(
                     }
                 },
                 onSelectPrivacyMode = cameraViewModel::setPrivacyMode,
+                onRequestDeleteOwner = { pendingOwnerDeletion = it },
             )
         }
 
@@ -429,6 +435,33 @@ fun BroadcastCameraScreen(
                 onDismiss = {
                     viewModel.dismissCompletedReport()
                     latestRecordingFilePath = null
+                },
+            )
+        }
+
+        pendingOwnerDeletion?.let { owner ->
+            AlertDialog(
+                onDismissRequest = { pendingOwnerDeletion = null },
+                title = {
+                    Text(text = "Owner 삭제")
+                },
+                text = {
+                    Text(text = "이 Owner를 삭제할까요?")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            cameraViewModel.removeRegisteredOwner(owner)
+                            pendingOwnerDeletion = null
+                        },
+                    ) {
+                        Text(text = "삭제", color = FocusIosPalette.Danger)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingOwnerDeletion = null }) {
+                        Text(text = "취소")
+                    }
                 },
             )
         }
@@ -550,10 +583,11 @@ private fun FloatingBroadcastAction(
 private fun BroadcastMenuPanel(
     lensFacing: LensFacing,
     privacyMode: PrivacyMode,
-    ownerThumbnailPaths: List<String>,
+    registeredOwners: List<RegisteredOwner>,
     onDismiss: () -> Unit,
     onSelectLensFacing: (LensFacing) -> Unit,
     onSelectPrivacyMode: (PrivacyMode) -> Unit,
+    onRequestDeleteOwner: (RegisteredOwner) -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -585,17 +619,20 @@ private fun BroadcastMenuPanel(
                 title = "Owner 관리",
                 subtitle = "화면에 그대로 유지할 스트리머 프로필",
             ) {
-                if (ownerThumbnailPaths.isNotEmpty()) {
+                if (registeredOwners.isNotEmpty()) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         items(
-                        items = ownerThumbnailPaths,
-                        key = { it },
-                    ) { path ->
-                        OwnerThumbnailCard(
-                            path = path,
-                        )
+                            items = registeredOwners,
+                            key = { "${it.ownerId}-${it.trackId}-${it.thumbnailPath}" },
+                        ) { owner ->
+                            OwnerThumbnailCard(
+                                path = owner.thumbnailPath,
+                                onClick = { onRequestDeleteOwner(owner) },
+                            )
+                        }
                     }
-                }
+                } else {
+                    EmptyPanelHint(text = "등록된 Owner가 없습니다.")
                 }
             }
 
@@ -675,6 +712,7 @@ private fun PanelSection(
 @Composable
 private fun OwnerThumbnailCard(
     path: String,
+    onClick: () -> Unit,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -684,7 +722,8 @@ private fun OwnerThumbnailCard(
         Box(
             modifier = Modifier
                 .size(width = 116.dp, height = 132.dp)
-                .background(Color.Black.copy(alpha = 0.06f), RoundedCornerShape(18.dp)),
+                .background(Color.Black.copy(alpha = 0.06f), RoundedCornerShape(18.dp))
+                .clickable(onClick = onClick),
         ) {
             AsyncImage(
                 model = File(path),
@@ -692,6 +731,20 @@ private fun OwnerThumbnailCard(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.44f))
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "삭제",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
     }
 }

@@ -151,17 +151,47 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             return OwnerRegistrationResult(success = false)
         }
 
-        val success = ownerAdder.addOwnerFromEmbedding(embedding)
+        val ownerId = ownerAdder.addOwnerFromEmbeddingWithOwnerId(embedding)
+        val success = ownerId != null
         val thumbnailPath = if (success) saveFaceThumbnail(crop) else null
 
         if (success) {
             trackLabelState.markOwner(trackId)
-            Log.i(TAG, "registerOwner: trackId=$trackId registered, thumbnail=$thumbnailPath")
+            Log.i(
+                TAG,
+                "registerOwner: trackId=$trackId registered, ownerId=$ownerId, thumbnail=$thumbnailPath",
+            )
         }
 
         crop.recycle()
         bitmap.recycle()
-        return OwnerRegistrationResult(success = success, thumbnailPath = thumbnailPath)
+        return OwnerRegistrationResult(
+            success = success,
+            ownerId = ownerId,
+            thumbnailPath = thumbnailPath,
+        )
+    }
+
+    override fun removeOwner(
+        ownerId: Int,
+        trackId: Int,
+        thumbnailPath: String?,
+    ): Boolean {
+        val removed = ownerAdder.removeOwner(ownerId)
+        if (!removed) {
+            return false
+        }
+        trackLabelState.removeTrack(trackId)
+        thumbnailPath
+            ?.takeIf { it.isNotBlank() }
+            ?.let { path ->
+                runCatching { File(path).delete() }
+                    .onFailure { throwable ->
+                        Log.w(TAG, "removeOwner: thumbnail delete failed path=$path", throwable)
+                    }
+            }
+        Log.i(TAG, "removeOwner: ownerId=$ownerId, trackId=$trackId removed")
+        return true
     }
 
     override fun processFrame(

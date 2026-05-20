@@ -57,6 +57,16 @@ class CameraAnalysisUseCase @Inject constructor(
         processedFrame = processedFrame,
     )
 
+    fun removeOwner(
+        ownerId: Int,
+        trackId: Int,
+        thumbnailPath: String? = null,
+    ): Boolean = cameraAnalysisRepository.removeOwner(
+        ownerId = ownerId,
+        trackId = trackId,
+        thumbnailPath = thumbnailPath,
+    )
+
     fun clearProcessingThreadCache() {
         cameraAnalysisRepository.clearProcessingThreadCache()
     }

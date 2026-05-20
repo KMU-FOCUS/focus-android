@@ -11,6 +11,7 @@ import com.kmu_focus.focusandroid.core.media.di.IoDispatcher
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
+import com.kmu_focus.focusandroid.feature.camera.domain.entity.RegisteredOwner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import java.nio.ByteBuffer
@@ -38,8 +39,11 @@ data class CameraUiState(
     val frameWidth: Int = 0,
     val frameHeight: Int = 0,
     val recordingFile: File? = null,
-    val registeredOwnerThumbnails: List<String> = emptyList(),
-)
+    val registeredOwners: List<RegisteredOwner> = emptyList(),
+) {
+    val registeredOwnerThumbnails: List<String>
+        get() = registeredOwners.map { it.thumbnailPath }
+}
 
 @HiltViewModel
 class CameraViewModel @Inject constructor(
@@ -117,7 +121,7 @@ class CameraViewModel @Inject constructor(
             trackingIds = emptyList(),
             previewWidth = 0,
             previewHeight = 0,
-            registeredOwnerThumbnails = emptyList(),
+            registeredOwners = emptyList(),
         )
         cameraAnalysisUseCase.clearProcessingThreadCache()
     }
@@ -141,7 +145,7 @@ class CameraViewModel @Inject constructor(
             trackingIds = emptyList(),
             previewWidth = 0,
             previewHeight = 0,
-            registeredOwnerThumbnails = emptyList(),
+            registeredOwners = emptyList(),
         )
     }
 
@@ -174,9 +178,15 @@ class CameraViewModel @Inject constructor(
             )
             if (regResult.success) {
                 manualOwnerTrackIds.add(pendingTrackId)
-                regResult.thumbnailPath?.let { path ->
+                val ownerId = regResult.ownerId
+                val thumbnailPath = regResult.thumbnailPath
+                if (ownerId != null && thumbnailPath != null) {
                     _uiState.value = _uiState.value.copy(
-                        registeredOwnerThumbnails = _uiState.value.registeredOwnerThumbnails + path,
+                        registeredOwners = _uiState.value.registeredOwners + RegisteredOwner(
+                            ownerId = ownerId,
+                            trackId = pendingTrackId,
+                            thumbnailPath = thumbnailPath,
+                        ),
                     )
                 }
             }
@@ -309,7 +319,7 @@ class CameraViewModel @Inject constructor(
             trackingIds = emptyList(),
             previewWidth = 0,
             previewHeight = 0,
-            registeredOwnerThumbnails = emptyList(),
+            registeredOwners = emptyList(),
         )
         cameraAnalysisUseCase.clearProcessingThreadCache()
     }
@@ -340,6 +350,43 @@ class CameraViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(recordingFile = null)
     }
 
+    fun removeRegisteredOwner(owner: RegisteredOwner) {
+        val removed = cameraAnalysisUseCase.removeOwner(
+            ownerId = owner.ownerId,
+            trackId = owner.trackId,
+            thumbnailPath = owner.thumbnailPath,
+        )
+        if (!removed) return
+
+        manualOwnerTrackIds.remove(owner.trackId)
+        if (pendingOwnerRegistrationTrackId == owner.trackId) {
+            pendingOwnerRegistrationTrackId = null
+        }
+
+        val currentState = _uiState.value
+        val remainingOwners = currentState.registeredOwners
+            .filterNot {
+                it.ownerId == owner.ownerId &&
+                    it.trackId == owner.trackId &&
+                    it.thumbnailPath == owner.thumbnailPath
+            }
+            .mapIndexed { index, item ->
+                item.copy(ownerId = index)
+            }
+
+        _uiState.value = currentState.copy(
+            registeredOwners = remainingOwners,
+            faceLabels = currentState.faceLabels.mapIndexed { index, currentLabel ->
+                val currentTrackId = currentState.trackingIds.getOrNull(index) ?: index
+                if (currentTrackId == owner.trackId) {
+                    false
+                } else {
+                    currentLabel
+                }
+            },
+        )
+    }
+
     fun clearProcessingThreadCache() {
         cameraAnalysisUseCase.clearProcessingThreadCache()
     }
@@ -351,7 +398,7 @@ class CameraViewModel @Inject constructor(
             detectedFaces = emptyList(),
             faceLabels = emptyList(),
             trackingIds = emptyList(),
-            registeredOwnerThumbnails = emptyList(),
+            registeredOwners = emptyList(),
         )
         cameraAnalysisUseCase.resetSessionState()
     }
