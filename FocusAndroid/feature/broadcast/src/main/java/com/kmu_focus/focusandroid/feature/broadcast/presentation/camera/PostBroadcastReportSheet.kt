@@ -31,68 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPalette
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPrimaryButton
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import kotlin.math.max
-
-internal data class CompletedBroadcastReport(
-    val title: String,
-    val sessionId: String,
-    val completedAtMillis: Long,
-    val durationSec: Int,
-    val ownerCount: Int,
-    val replacedFaceCount: Int,
-    val maxCrowdCount: Int,
-    val highlightCount: Int,
-    val summary: String,
-    val strengths: List<String>,
-    val weaknesses: List<String>,
-    val actionItems: List<String>,
-    val recordingFilePath: String?,
-)
-
-internal fun buildCompletedBroadcastReport(
-    sessionId: String,
-    durationSec: Int,
-    ownerCount: Int,
-    recordingFilePath: String?,
-    completedAtMillis: Long = System.currentTimeMillis(),
-): CompletedBroadcastReport {
-    val safeDuration = max(durationSec, 1)
-    val safeOwnerCount = max(ownerCount, 0)
-    val replacedFaceCount = max(safeOwnerCount * max(safeDuration / 20, 1), safeOwnerCount)
-    val highlightCount = max(safeDuration / 90, 1)
-    val maxCrowdCount = max(safeOwnerCount, if (safeOwnerCount == 0) 1 else minOf(safeOwnerCount + 1, 4))
-
-    return CompletedBroadcastReport(
-        title = "방송 회고 리포트",
-        sessionId = sessionId,
-        completedAtMillis = completedAtMillis,
-        durationSec = safeDuration,
-        ownerCount = safeOwnerCount,
-        replacedFaceCount = replacedFaceCount,
-        maxCrowdCount = maxCrowdCount,
-        highlightCount = highlightCount,
-        summary = "${safeDuration.toDurationLabel()} 동안 라이브를 안정적으로 진행했습니다. 방송 흐름이 끊기지 않았고 종료 후 요약 리포트까지 바로 확인할 수 있습니다.",
-        strengths = listOf(
-            "방송 시작부터 종료까지 한 화면에서 흐름이 자연스럽게 이어졌습니다.",
-            if (safeOwnerCount > 0) "Owner ${safeOwnerCount}명이 유지되어 인물 중심 장면 구성이 안정적으로 이어졌습니다." else "카메라 준비 상태와 송출 상태가 명확하게 유지되었습니다.",
-            "방송 종료 후 정리 단계까지 자동으로 완료되어 마무리가 깔끔했습니다.",
-        ),
-        weaknesses = listOf(
-            if (safeOwnerCount > 0) "장면 전환이 많을 때는 Owner 유지 범위를 한 번 더 점검해보는 것이 좋습니다." else "Owner가 등록되지 않아 인물 중심 보호 구간이 제한적이었습니다.",
-            "하이라이트 후보가 많지 않아 임팩트 있는 구간을 더 분명하게 만드는 것이 좋습니다.",
-        ),
-        actionItems = listOf(
-            "방송 초반에 Owner를 먼저 등록해 주요 인물을 빠르게 고정해보세요.",
-            "시청 반응이 올라오는 구간을 의식해 하이라이트 포인트를 더 선명하게 만들어보세요.",
-            "다음 방송에서는 장면 전환 타이밍과 멘트 호흡을 함께 점검해보세요.",
-        ),
-        recordingFilePath = recordingFilePath,
-    )
-}
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -202,21 +141,31 @@ private fun ReportHeader(report: CompletedBroadcastReport) {
                 color = FocusIosPalette.TextMuted,
             )
         }
-        StatusBadge(text = "요약 완료")
+        StatusBadge(status = report.analysisStatus)
     }
 }
 
 @Composable
-private fun StatusBadge(text: String) {
+private fun StatusBadge(status: BroadcastAnalysisStatus) {
+    val containerColor = when (status) {
+        BroadcastAnalysisStatus.SUCCEEDED -> FocusIosPalette.SecondarySoft
+        BroadcastAnalysisStatus.PROCESSING -> FocusIosPalette.WarningSoft
+        BroadcastAnalysisStatus.FAILED -> FocusIosPalette.Danger.copy(alpha = 0.12f)
+    }
+    val contentColor = when (status) {
+        BroadcastAnalysisStatus.SUCCEEDED -> FocusIosPalette.Secondary
+        BroadcastAnalysisStatus.PROCESSING -> FocusIosPalette.Warning
+        BroadcastAnalysisStatus.FAILED -> FocusIosPalette.Danger
+    }
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = FocusIosPalette.SecondarySoft,
+        color = containerColor,
     ) {
         Text(
-            text = text,
+            text = status.title,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             style = MaterialTheme.typography.labelMedium,
-            color = FocusIosPalette.Secondary,
+            color = contentColor,
             fontWeight = FontWeight.Bold,
         )
     }
@@ -233,7 +182,7 @@ private fun MetaCards(report: CompletedBroadcastReport) {
         InfoCard(
             modifier = Modifier.weight(1f),
             title = "분석 상태",
-            value = "요약 완료",
+            value = report.analysisStatus.title,
         )
     }
 }
@@ -304,6 +253,13 @@ private fun BulletCard(
     accent: Color,
 ) {
     ReportCard(title = title) {
+        if (items.isEmpty()) {
+            Text(
+                text = "분석 결과를 준비하는 중입니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = FocusIosPalette.TextMuted,
+            )
+        }
         items.forEach { item ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -401,12 +357,48 @@ private fun MetricCard(
 @Composable
 private fun ReportDetailCard(report: CompletedBroadcastReport) {
     ReportCard(title = "세부 분석 결과") {
-        DetailRow(label = "Broadcast ID", value = report.sessionId)
+        DetailRow(label = "Broadcast ID", value = report.broadcastId)
+        report.analysisJobId?.let { DetailRow(label = "Analysis Job", value = it) }
         DetailRow(label = "방송 길이", value = report.durationSec.toDurationLabel())
         DetailRow(label = "Owner 수", value = report.ownerCount.toString())
-        DetailRow(label = "분석 상태", value = "요약 완료")
+        DetailRow(label = "분석 상태", value = report.analysisStatus.title)
+        if (report.peakViewerCount > 0) {
+            DetailRow(label = "최고 시청자 수", value = report.peakViewerCount.toString())
+        }
+        report.peakOccurredAtLabel?.let { DetailRow(label = "최고점 시각", value = it) }
+        if (report.peakSceneDescription.isNotBlank()) {
+            DetailRow(label = "피크 장면", value = report.peakSceneDescription)
+        }
         DetailRow(label = "완료 시각", value = report.completedAtMillis.toDateTimeLabel())
+        if (report.contentRatios.isNotEmpty()) {
+            DetailSectionTitle(title = "콘텐츠 비율")
+            report.contentRatios.forEach { ratio ->
+                DetailRow(
+                    label = ratio.contentType,
+                    value = "${ratio.percentage.toInt()}% · ${ratio.durationSec.toDurationLabel()}",
+                )
+            }
+        }
+        if (report.highlightMoments.isNotEmpty()) {
+            DetailSectionTitle(title = "하이라이트 포인트")
+            report.highlightMoments.forEach { moment ->
+                DetailRow(
+                    label = "${moment.timeLabel} ${moment.title}",
+                    value = moment.description,
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun DetailSectionTitle(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        color = FocusIosPalette.Text,
+        fontWeight = FontWeight.Bold,
+    )
 }
 
 @Composable
@@ -426,18 +418,4 @@ private fun DetailRow(
             color = FocusIosPalette.Text,
         )
     }
-}
-
-private fun Int.toDurationLabel(): String {
-    val minutes = this / 60
-    val seconds = this % 60
-    return if (minutes > 0) {
-        "${minutes}분 ${seconds}초"
-    } else {
-        "${seconds}초"
-    }
-}
-
-private fun Long.toDateTimeLabel(): String {
-    return SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.KOREA).format(Date(this))
 }

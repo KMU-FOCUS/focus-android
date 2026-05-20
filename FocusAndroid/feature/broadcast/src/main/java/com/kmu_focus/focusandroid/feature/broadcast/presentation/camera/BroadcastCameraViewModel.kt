@@ -7,8 +7,12 @@ import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.broadcast.BuildConfig
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.BroadcastStreamingUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CompleteBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.DeleteBroadcastUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.GetBroadcastHighlightsUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.GetLatestBroadcastAnalysisUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -31,6 +35,7 @@ data class BroadcastCameraUiState(
     val isBroadcasting: Boolean = false,
     val isStopping: Boolean = false,
     val error: String? = null,
+    val completedReport: CompletedBroadcastReport? = null,
 )
 
 @HiltViewModel
@@ -38,6 +43,10 @@ class BroadcastCameraViewModel @Inject constructor(
     private val createBroadcastUseCase: CreateBroadcastUseCase,
     private val deleteBroadcastUseCase: DeleteBroadcastUseCase,
     private val broadcastStreamingUseCase: BroadcastStreamingUseCase,
+    private val createBroadcastAnalysisJobUseCase: CreateBroadcastAnalysisJobUseCase,
+    private val completeBroadcastAnalysisJobUseCase: CompleteBroadcastAnalysisJobUseCase,
+    private val getLatestBroadcastAnalysisUseCase: GetLatestBroadcastAnalysisUseCase,
+    private val getBroadcastHighlightsUseCase: GetBroadcastHighlightsUseCase,
     private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -89,6 +98,7 @@ class BroadcastCameraViewModel @Inject constructor(
                 isPreparing = true,
                 isStopping = false,
                 srtState = SrtConnectionState.CONNECTING,
+                completedReport = null,
             )
         }
 
@@ -231,6 +241,17 @@ class BroadcastCameraViewModel @Inject constructor(
     }
 
     fun stopBroadcasting() {
+        stopBroadcasting(
+            reportSeed = CompletedBroadcastReportSeed(
+                broadcastId = uiState.value.broadcastId,
+                durationSec = 1,
+                ownerCount = 0,
+                recordingFilePath = null,
+            ),
+        )
+    }
+
+    fun stopBroadcasting(reportSeed: CompletedBroadcastReportSeed) {
         val currentState = uiState.value
         if (currentState.isStopping) {
             return
@@ -256,11 +277,20 @@ class BroadcastCameraViewModel @Inject constructor(
                 isStopping = true,
                 error = null,
                 srtState = SrtConnectionState.DISCONNECTED,
+                completedReport = null,
             )
         }
 
         viewModelScope.launch {
             val stopFailure = broadcastStreamingUseCase.stopBroadcast(broadcastId).exceptionOrNull()
+            val completedReport = if (stopFailure == null) {
+                buildCompletedReport(
+                    broadcastId = broadcastId,
+                    seed = reportSeed.copy(broadcastId = broadcastId),
+                )
+            } else {
+                null
+            }
             val deleteFailure = deleteBroadcastUseCase(broadcastId).exceptionOrNull()
             clearSession(
                 error = mergeErrorMessages(
@@ -272,13 +302,21 @@ class BroadcastCameraViewModel @Inject constructor(
                 } else {
                     SrtConnectionState.DISCONNECTED
                 },
+                completedReport = completedReport,
             )
+        }
+    }
+
+    fun dismissCompletedReport() {
+        _uiState.update { current ->
+            current.copy(completedReport = null)
         }
     }
 
     private fun clearSession(
         error: String? = null,
         srtState: SrtConnectionState = SrtConnectionState.DISCONNECTED,
+        completedReport: CompletedBroadcastReport? = null,
     ) {
         savedStateHandle[BROADCAST_ID_KEY] = ""
         savedStateHandle[STREAM_KEY_KEY] = ""
@@ -287,6 +325,7 @@ class BroadcastCameraViewModel @Inject constructor(
             BroadcastCameraUiState(
                 srtState = srtState,
                 error = error,
+                completedReport = completedReport,
             )
         }
     }
@@ -305,6 +344,64 @@ class BroadcastCameraViewModel @Inject constructor(
             secondary.isNullOrBlank() -> primary
             else -> "$primary / 정리 실패: $secondary"
         }
+    }
+
+    private suspend fun buildCompletedReport(
+        broadcastId: String,
+        seed: CompletedBroadcastReportSeed,
+    ): CompletedBroadcastReport {
+        val localReport = buildLocalCompletedBroadcastReport(
+            seed = seed,
+            analysisStatus = com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus.PROCESSING,
+        )
+
+        val createdJob = createBroadcastAnalysisJobUseCase(
+            broadcastId = broadcastId,
+            request = localReport.toCreateAnalysisJobRequest(seed),
+        ).getOrElse {
+            return localReport.copy(
+                analysisStatus = com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus.FAILED,
+            )
+        }
+
+        val seededReport = localReport.copy(
+            analysisJobId = createdJob.analysisJobId,
+            analysisStatus = createdJob.jobStatus,
+        )
+
+        val completedJob = completeBroadcastAnalysisJobUseCase(
+            broadcastId = broadcastId,
+            analysisJobId = createdJob.analysisJobId,
+            request = seededReport.toCompleteAnalysisJobRequest(seed),
+        ).getOrNull()
+
+        val latestAnalysis = getLatestBroadcastAnalysisUseCase(broadcastId).getOrNull()
+        val highlightMoments = getBroadcastHighlightsUseCase(broadcastId)
+            .getOrDefault(emptyList())
+            .map { it.toCompletedHighlightMoment() }
+
+        if (latestAnalysis != null) {
+            return latestAnalysis.toCompletedBroadcastReport(seed, highlightMoments)
+        }
+
+        return seededReport.copy(
+            analysisStatus = completedJob?.jobStatus ?: com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus.FAILED,
+            completedAtMillis = completedJob?.completedAt?.let(::parseAnalysisEpochMillis)
+                ?: seed.completedAtMillis,
+            highlightCount = maxOf(seededReport.highlightCount, highlightMoments.size),
+            highlightMoments = highlightMoments,
+        )
+    }
+
+    private fun parseAnalysisEpochMillis(raw: String): Long? {
+        return runCatching {
+            java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli()
+        }.recoverCatching {
+            java.time.LocalDateTime.parse(raw, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
+        }.getOrNull()
     }
 
     override fun onCleared() {

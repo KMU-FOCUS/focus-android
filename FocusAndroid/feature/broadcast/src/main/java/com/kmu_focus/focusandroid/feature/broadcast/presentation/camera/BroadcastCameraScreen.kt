@@ -109,9 +109,6 @@ fun BroadcastCameraScreen(
     var isMenuPresented by rememberSaveable { mutableStateOf(false) }
     var liveStartedAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     var latestRecordingFilePath by rememberSaveable { mutableStateOf<String?>(null) }
-    var pendingReportSeed by remember {
-        mutableStateOf<CompletedBroadcastReport?>(null)
-    }
 
     LaunchedEffect(cameraUiState.isCameraActive) {
         if (cameraUiState.isCameraActive && !cameraUiState.isDetecting) {
@@ -226,9 +223,9 @@ fun BroadcastCameraScreen(
         uiState.isBroadcasting,
         uiState.isStopping,
         uiState.error,
-        pendingReportSeed,
+        uiState.completedReport,
     ) {
-        if (pendingReportSeed == null) {
+        if (uiState.completedReport == null) {
             return@LaunchedEffect
         }
         if (uiState.isPreparing || uiState.isBroadcasting || uiState.isStopping) {
@@ -242,14 +239,14 @@ fun BroadcastCameraScreen(
 
     val requestStopWithReport = {
         val startedAt = liveStartedAtMillis ?: System.currentTimeMillis()
-        pendingReportSeed = buildCompletedBroadcastReport(
-            sessionId = uiState.broadcastId.ifBlank { "unknown" },
+        val reportSeed = CompletedBroadcastReportSeed(
+            broadcastId = uiState.broadcastId.ifBlank { "unknown" },
             durationSec = ((System.currentTimeMillis() - startedAt) / 1000L).toInt(),
             ownerCount = cameraUiState.registeredOwnerThumbnails.size,
             recordingFilePath = latestRecordingFilePath,
         )
         cameraViewModel.stopRecording()
-        viewModel.stopBroadcasting()
+        viewModel.stopBroadcasting(reportSeed)
     }
 
     val closeCurrentSession = {
@@ -269,8 +266,9 @@ fun BroadcastCameraScreen(
     BackHandler {
         when {
             isMenuPresented -> isMenuPresented = false
-            pendingReportSeed != null && !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping -> {
-                pendingReportSeed = null
+            uiState.completedReport != null && !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping -> {
+                viewModel.dismissCompletedReport()
+                latestRecordingFilePath = null
             }
             uiState.isStopping -> Unit
             uiState.isPreparing || uiState.isBroadcasting || cameraUiState.isRecording -> {
@@ -425,11 +423,11 @@ fun BroadcastCameraScreen(
             )
         }
 
-        if (pendingReportSeed != null && !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping && uiState.error == null) {
+        if (uiState.completedReport != null && !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping) {
             PostBroadcastReportSheet(
-                report = pendingReportSeed!!,
+                report = uiState.completedReport!!,
                 onDismiss = {
-                    pendingReportSeed = null
+                    viewModel.dismissCompletedReport()
                     latestRecordingFilePath = null
                 },
             )

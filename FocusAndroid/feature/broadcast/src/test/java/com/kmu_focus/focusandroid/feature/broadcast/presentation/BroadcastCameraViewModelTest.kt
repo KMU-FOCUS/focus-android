@@ -1,13 +1,25 @@
 package com.kmu_focus.focusandroid.feature.broadcast.presentation
 
 import androidx.lifecycle.SavedStateHandle
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisJob
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastFaceStatistics
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastMediaAsset
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAiReport
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastContentRatio
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastStatus
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.BroadcastStreamingUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CompleteBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.DeleteBroadcastUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.GetBroadcastHighlightsUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.GetLatestBroadcastAnalysisUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.camera.BroadcastCameraViewModel
+import com.kmu_focus.focusandroid.feature.broadcast.presentation.camera.CompletedBroadcastReportSeed
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -33,6 +45,10 @@ class BroadcastCameraViewModelTest {
     private lateinit var createBroadcastUseCase: CreateBroadcastUseCase
     private lateinit var deleteBroadcastUseCase: DeleteBroadcastUseCase
     private lateinit var broadcastStreamingUseCase: BroadcastStreamingUseCase
+    private lateinit var createBroadcastAnalysisJobUseCase: CreateBroadcastAnalysisJobUseCase
+    private lateinit var completeBroadcastAnalysisJobUseCase: CompleteBroadcastAnalysisJobUseCase
+    private lateinit var getLatestBroadcastAnalysisUseCase: GetLatestBroadcastAnalysisUseCase
+    private lateinit var getBroadcastHighlightsUseCase: GetBroadcastHighlightsUseCase
     private lateinit var viewModel: BroadcastCameraViewModel
 
     private val testDispatcher = UnconfinedTestDispatcher()
@@ -47,6 +63,54 @@ class BroadcastCameraViewModelTest {
         startedAt = null,
         endedAt = null,
     )
+    private val sampleAnalysisJob = BroadcastAnalysisJob(
+        analysisJobId = "job-1",
+        broadcastId = "broadcast-1",
+        jobType = "FULL_SUMMARY",
+        jobStatus = BroadcastAnalysisStatus.SUCCEEDED,
+        completedAt = "2026-05-21T00:00:00",
+        errorMessage = null,
+        createdAt = "2026-05-21T00:00:00",
+        mediaAsset = BroadcastMediaAsset(
+            mediaAssetId = "asset-1",
+            assetType = "ANALYSIS_MP4",
+            storageProvider = "LOCAL_FILE",
+            storageKey = "android/broadcast-1/recording.mp4",
+            storageUrl = null,
+            durationSec = 30,
+            resolutionWidth = 1280,
+            resolutionHeight = 720,
+            fileSizeBytes = 1024,
+            createdAt = "2026-05-21T00:00:00",
+        ),
+    )
+    private val sampleAnalysisResult = BroadcastAnalysisResult(
+        broadcastId = "broadcast-1",
+        latestJob = sampleAnalysisJob,
+        latestReport = BroadcastAiReport(
+            aiReportId = "report-1",
+            reportType = "POST_STREAM_SUMMARY",
+            title = "FOCUS 방송 리포트",
+            summary = "요약",
+            strengths = listOf("강점"),
+            weaknesses = listOf("약점"),
+            actionItems = listOf("액션"),
+            viewerPeakInsight = null,
+            faceStatistics = BroadcastFaceStatistics(
+                totalReplacedFaceCount = 3,
+                maxSimultaneousCrowdCount = 2,
+            ),
+            contentRatios = listOf(
+                BroadcastContentRatio(
+                    contentType = "토크",
+                    percentage = 100.0,
+                    durationSec = 30,
+                ),
+            ),
+            createdAt = "2026-05-21T00:00:00",
+        ),
+        highlightCount = 1,
+    )
 
     @Before
     fun setup() {
@@ -54,6 +118,10 @@ class BroadcastCameraViewModelTest {
         createBroadcastUseCase = mockk()
         deleteBroadcastUseCase = mockk()
         broadcastStreamingUseCase = mockk(relaxed = true)
+        createBroadcastAnalysisJobUseCase = mockk()
+        completeBroadcastAnalysisJobUseCase = mockk()
+        getLatestBroadcastAnalysisUseCase = mockk()
+        getBroadcastHighlightsUseCase = mockk()
     }
 
     @After
@@ -61,14 +129,22 @@ class BroadcastCameraViewModelTest {
         Dispatchers.resetMain()
     }
 
-    @Test
-    fun `초기 상태는 세션 없는 라이브 홈이다`() {
-        viewModel = BroadcastCameraViewModel(
+    private fun createViewModel(): BroadcastCameraViewModel {
+        return BroadcastCameraViewModel(
             createBroadcastUseCase = createBroadcastUseCase,
             deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
+            createBroadcastAnalysisJobUseCase = createBroadcastAnalysisJobUseCase,
+            completeBroadcastAnalysisJobUseCase = completeBroadcastAnalysisJobUseCase,
+            getLatestBroadcastAnalysisUseCase = getLatestBroadcastAnalysisUseCase,
+            getBroadcastHighlightsUseCase = getBroadcastHighlightsUseCase,
             savedStateHandle = SavedStateHandle(),
         )
+    }
+
+    @Test
+    fun `초기 상태는 세션 없는 라이브 홈이다`() {
+        viewModel = createViewModel()
 
         val state = viewModel.uiState.value
         assertEquals("", state.broadcastId)
@@ -91,12 +167,7 @@ class BroadcastCameraViewModelTest {
             )
         } returns Result.success(Unit)
 
-        viewModel = BroadcastCameraViewModel(
-            createBroadcastUseCase = createBroadcastUseCase,
-            deleteBroadcastUseCase = deleteBroadcastUseCase,
-            broadcastStreamingUseCase = broadcastStreamingUseCase,
-            savedStateHandle = SavedStateHandle(),
-        )
+        viewModel = createViewModel()
 
         viewModel.startBroadcasting()
 
@@ -113,12 +184,7 @@ class BroadcastCameraViewModelTest {
     fun `startBroadcasting 실패 시 error가 설정된다`() = runTest {
         coEvery { createBroadcastUseCase.invoke(any()) } returns Result.failure(RuntimeException("방송 생성 실패"))
 
-        viewModel = BroadcastCameraViewModel(
-            createBroadcastUseCase = createBroadcastUseCase,
-            deleteBroadcastUseCase = deleteBroadcastUseCase,
-            broadcastStreamingUseCase = broadcastStreamingUseCase,
-            savedStateHandle = SavedStateHandle(),
-        )
+        viewModel = createViewModel()
 
         viewModel.startBroadcasting()
 
@@ -135,12 +201,7 @@ class BroadcastCameraViewModelTest {
         )
         every { broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any()) } returns Job()
 
-        viewModel = BroadcastCameraViewModel(
-            createBroadcastUseCase = createBroadcastUseCase,
-            deleteBroadcastUseCase = deleteBroadcastUseCase,
-            broadcastStreamingUseCase = broadcastStreamingUseCase,
-            savedStateHandle = SavedStateHandle(),
-        )
+        viewModel = createViewModel()
 
         viewModel.startBroadcasting()
         viewModel.confirmBroadcastStarted()
@@ -161,17 +222,23 @@ class BroadcastCameraViewModelTest {
         every { broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any()) } returns Job()
         coEvery { broadcastStreamingUseCase.stopBroadcast("broadcast-1") } returns Result.success(Unit)
         coEvery { deleteBroadcastUseCase.invoke("broadcast-1") } returns Result.success(Unit)
+        coEvery { createBroadcastAnalysisJobUseCase.invoke(any(), any()) } returns Result.success(sampleAnalysisJob)
+        coEvery { completeBroadcastAnalysisJobUseCase.invoke(any(), any(), any()) } returns Result.success(sampleAnalysisJob)
+        coEvery { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") } returns Result.success(sampleAnalysisResult)
+        coEvery { getBroadcastHighlightsUseCase.invoke("broadcast-1") } returns Result.success(emptyList())
 
-        viewModel = BroadcastCameraViewModel(
-            createBroadcastUseCase = createBroadcastUseCase,
-            deleteBroadcastUseCase = deleteBroadcastUseCase,
-            broadcastStreamingUseCase = broadcastStreamingUseCase,
-            savedStateHandle = SavedStateHandle(),
-        )
+        viewModel = createViewModel()
 
         viewModel.startBroadcasting()
         viewModel.confirmBroadcastStarted()
-        viewModel.stopBroadcasting()
+        viewModel.stopBroadcasting(
+            CompletedBroadcastReportSeed(
+                broadcastId = "broadcast-1",
+                durationSec = 30,
+                ownerCount = 1,
+                recordingFilePath = null,
+            ),
+        )
 
         val state = viewModel.uiState.value
         assertFalse(state.isBroadcasting)
@@ -179,6 +246,8 @@ class BroadcastCameraViewModelTest {
         assertFalse(state.isStopping)
         assertEquals("", state.broadcastId)
         assertEquals(SrtConnectionState.DISCONNECTED, state.srtState)
+        assertTrue(state.completedReport != null)
+        assertEquals(BroadcastAnalysisStatus.SUCCEEDED, state.completedReport?.analysisStatus)
         coVerify(exactly = 1) { broadcastStreamingUseCase.stopBroadcast("broadcast-1") }
         coVerify(exactly = 1) { deleteBroadcastUseCase.invoke("broadcast-1") }
     }
@@ -190,12 +259,7 @@ class BroadcastCameraViewModelTest {
         coEvery { deleteBroadcastUseCase.invoke("broadcast-1") } returns Result.success(Unit)
         coEvery { broadcastStreamingUseCase.stopPreparedStreaming() } returns Unit
 
-        viewModel = BroadcastCameraViewModel(
-            createBroadcastUseCase = createBroadcastUseCase,
-            deleteBroadcastUseCase = deleteBroadcastUseCase,
-            broadcastStreamingUseCase = broadcastStreamingUseCase,
-            savedStateHandle = SavedStateHandle(),
-        )
+        viewModel = createViewModel()
 
         viewModel.startBroadcasting()
         viewModel.cancelPreparingBroadcast()
