@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
 
+    implementation(project(":core:ui"))
     implementation(project(":core:metadata"))
 
     implementation(libs.androidx.media3.exoplayer)

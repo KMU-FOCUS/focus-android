@@ -1,86 +1,70 @@
 package com.kmu_focus.focusandroid.feature.broadcast.presentation.create
 
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosGradientBackground
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPalette
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPanelHeader
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPrimaryButton
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSectionCard
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
 
 @Composable
 fun CreateBroadcastScreen(
-    onNavigateToCamera: (broadcastId: String, streamKey: String) -> Unit = { _, _ -> },
+    onNavigateToCamera: (broadcastId: String, streamKey: String, title: String) -> Unit = { _, _, _ -> },
     onBack: () -> Unit = {},
+    modifier: Modifier = Modifier,
     viewModel: CreateBroadcastViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .imePadding()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
+    FocusIosGradientBackground(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "STREAM CONTROL",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+            FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
+                FocusIosPanelHeader(
+                    title = "방송 실험실",
+                    subtitle = "방송 정보를 입력하고 송출 준비를 시작할 수 있어요.",
                 )
+                FocusIosSecondaryButton(
+                    text = "라이브 홈으로 돌아가기",
+                    onClick = onBack,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "새 방송 생성",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = FocusIosPalette.Text,
                 )
                 Text(
-                    text = "방송 제목을 입력한 뒤 생성하면 송출 카메라 화면으로 바로 이동할 수 있습니다.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            OutlinedButton(onClick = onBack) {
-                Text("뒤로")
-            }
-        }
-
-        Surface(
-            shape = RoundedCornerShape(30.dp),
-            tonalElevation = 4.dp,
-            color = MaterialTheme.colorScheme.surface,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(
-                    text = "기본 정보",
-                    style = MaterialTheme.typography.titleMedium,
+                    text = "메인 UX에서는 자동 생성되지만, 이 화면에서는 기존 수동 생성 흐름을 계속 테스트할 수 있습니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = FocusIosPalette.TextMuted,
                 )
                 OutlinedTextField(
                     value = uiState.title,
@@ -89,94 +73,53 @@ fun CreateBroadcastScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
-                Button(
+                FocusIosPrimaryButton(
+                    text = if (uiState.isCreating) "방송 생성 중..." else "방송 생성",
                     onClick = viewModel::createBroadcast,
                     enabled = !uiState.isCreating,
                     modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("방송 생성")
-                }
+                )
                 if (uiState.isCreating) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CircularProgressIndicator()
-                        Text(
-                            text = "서버에 방송을 생성하는 중입니다.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    CircularProgressIndicator(color = FocusIosPalette.Primary)
                 }
             }
-        }
 
-        uiState.createdBroadcast?.let { broadcast ->
-            Surface(
-                shape = RoundedCornerShape(30.dp),
-                tonalElevation = 2.dp,
-                color = MaterialTheme.colorScheme.primaryContainer,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(22.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
+            uiState.createdBroadcast?.let { broadcast ->
+                FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "생성 완료",
                         style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = FocusIosPalette.Text,
                     )
-                    BroadcastMetaRow(label = "방송 ID", value = broadcast.broadcastId)
-                    BroadcastMetaRow(label = "상태", value = broadcast.status.name)
+                    BroadcastMetaRow(label = "방송 제목", value = broadcast.title)
+                    BroadcastMetaRow(label = "Broadcast ID", value = broadcast.broadcastId)
+                    BroadcastMetaRow(label = "Stream Key", value = broadcast.streamKey)
                     BroadcastMetaRow(label = "라이브 상태", value = broadcast.liveStatus.name)
-                    broadcast.platform?.let { platform ->
-                        BroadcastMetaRow(label = "플랫폼", value = platform)
-                    }
-                    broadcast.outputMode?.let { outputMode ->
-                        BroadcastMetaRow(label = "출력 모드", value = outputMode)
-                    }
-                    BroadcastMetaRow(label = "스트림 키", value = broadcast.streamKey)
-                    broadcast.platformChannelId?.let { channelId ->
-                        BroadcastMetaRow(label = "플랫폼 채널 ID", value = channelId)
-                    }
-                    broadcast.watchUrl?.let { watchUrl ->
-                        BroadcastMetaRow(label = "시청 URL", value = watchUrl)
-                    }
                     broadcast.hlsUrl?.let { hlsUrl ->
                         BroadcastMetaRow(label = "HLS", value = hlsUrl)
                     }
-                    broadcast.lastStartFailureReason?.let { reason ->
-                        BroadcastMetaRow(label = "마지막 시작 실패 사유", value = reason)
-                    }
-                    Button(
+                    FocusIosPrimaryButton(
+                        text = "이 세션으로 라이브 홈 열기",
                         onClick = {
                             onNavigateToCamera(
                                 broadcast.broadcastId,
                                 broadcast.streamKey,
+                                broadcast.title,
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("카메라 화면으로 이동")
-                    }
+                    )
                 }
             }
-        }
 
-        uiState.error?.let { error ->
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.error.copy(alpha = 0.08f),
-            ) {
-                Text(
-                    text = error,
-                    modifier = Modifier.padding(18.dp),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            uiState.error?.let { error ->
+                FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = FocusIosPalette.Danger,
+                    )
+                }
             }
         }
     }
@@ -190,13 +133,13 @@ private fun BroadcastMetaRow(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+            style = MaterialTheme.typography.labelMedium,
+            color = FocusIosPalette.TextMuted,
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            color = FocusIosPalette.Text,
         )
     }
 }

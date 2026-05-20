@@ -12,6 +12,7 @@ import com.kmu_focus.focusandroid.core.ai.domain.detector.tracking.FaceTracker
 import com.kmu_focus.focusandroid.core.ai.domain.entity.DetectedFace
 import com.kmu_focus.focusandroid.core.media.domain.entity.FaceExport
 import com.kmu_focus.focusandroid.core.media.domain.entity.FrameExport
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import java.nio.ByteBuffer
 import javax.inject.Inject
@@ -27,30 +28,47 @@ class FrameProcessor @Inject constructor(
     // GL/트랜스코드 루프에서 매 프레임 Bitmap 신규 할당을 피하기 위해 스레드별 재사용한다.
     private val frameBitmapHolder = ThreadLocal<Bitmap>()
 
+    @Volatile
+    private var privacyMode: PrivacyMode = PrivacyMode.Avatar
+
+    fun setPrivacyMode(mode: PrivacyMode) {
+        privacyMode = mode
+    }
+
     fun process(bitmap: Bitmap, timestampMs: Long, frameIndex: Int? = null): ProcessedFrame {
+        val activePrivacyMode = privacyMode
         val faces = faceDetector.detectFaces(bitmap)
             .filter { it.confidence >= config.confidenceThreshold }
 
-        val raw3dmmList = if (faces.isNotEmpty()) {
+        val shouldExtract3dmm = activePrivacyMode == PrivacyMode.Avatar
+        val raw3dmmList = if (shouldExtract3dmm && faces.isNotEmpty()) {
             faces.map { face ->
                 val rect = Rect(face.x, face.y, face.x + face.width, face.y + face.height)
                 facial3DMMExtractor.extract3DMM(bitmap, rect)?.coeffs
             }
-        } else emptyList()
+        } else {
+            List(faces.size) { null }
+        }
 
         val trackingIds: List<Int> = if (frameIndex != null && faces.isNotEmpty()) {
             val detections = faces.map { intArrayOf(it.x, it.y, it.width, it.height) }
-            faceTracker.update(detections, raw3dmmList.map { it?.idCoeffs })
+            faceTracker.update(
+                detections = detections,
+                idCoeffs = raw3dmmList.map { it?.idCoeffs },
+            )
         } else {
             faces.indices.toList()
         }
 
-        fun hasValidLandmarks(idx: Int): Boolean = raw3dmmList.getOrNull(idx) != null
+        fun hasValidRecognitionInput(idx: Int): Boolean = when {
+            shouldExtract3dmm -> raw3dmmList.getOrNull(idx) != null
+            else -> faces.getOrNull(idx)?.landmarks != null
+        }
 
         if (faces.isNotEmpty()) {
             trackLabelState.beginFrame(trackingIds.toSet())
             for (idx in faces.indices) {
-                if (!hasValidLandmarks(idx)) continue
+                if (!hasValidRecognitionInput(idx)) continue
                 val face = faces[idx]
                 val trackId = trackingIds.getOrElse(idx) { idx }
                 trackLabelState.recordFrameSeen(trackId)
@@ -84,19 +102,23 @@ class FrameProcessor @Inject constructor(
         }
 
         val frameExport = if (frameIndex != null) {
-            val facesExport = faces.mapIndexed { idx, face ->
-                val raw3dmm = raw3dmmList.getOrNull(idx)
-                val trackId = trackingIds.getOrElse(idx) { idx }
-                val isOwner = trackLabelState.getLabel(trackId)
-                FaceExport(
-                    trackingId = trackId,
-                    bbox = intArrayOf(face.x, face.y, face.width, face.height),
-                    idCoeffs = raw3dmm?.idCoeffs,
-                    expCoeffs = raw3dmm?.expCoeffs,
-                    pose = raw3dmm?.pose,
-                    extraCoeffs = raw3dmm?.extraCoeffs,
-                    isOwner = isOwner
-                )
+            val facesExport = if (activePrivacyMode == PrivacyMode.Avatar) {
+                faces.mapIndexed { idx, face ->
+                    val raw3dmm = raw3dmmList.getOrNull(idx)
+                    val trackId = trackingIds.getOrElse(idx) { idx }
+                    val isOwner = trackLabelState.getLabel(trackId)
+                    FaceExport(
+                        trackingId = trackId,
+                        bbox = intArrayOf(face.x, face.y, face.width, face.height),
+                        idCoeffs = raw3dmm?.idCoeffs,
+                        expCoeffs = raw3dmm?.expCoeffs,
+                        pose = raw3dmm?.pose,
+                        extraCoeffs = raw3dmm?.extraCoeffs,
+                        isOwner = isOwner
+                    )
+                }
+            } else {
+                emptyList()
             }
             FrameExport(
                 frameNumber = frameIndex,

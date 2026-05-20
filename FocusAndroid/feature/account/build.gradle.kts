@@ -87,6 +87,7 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
 
+    implementation(project(":core:ui"))
     implementation(project(":core:network"))
     implementation(project(":feature:auth"))
 

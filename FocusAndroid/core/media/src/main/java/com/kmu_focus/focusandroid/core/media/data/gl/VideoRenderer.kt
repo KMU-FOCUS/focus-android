@@ -12,6 +12,7 @@ import android.view.Surface
 import androidx.annotation.VisibleForTesting
 import com.kmu_focus.focusandroid.core.ai.domain.entity.DetectedFace
 import com.kmu_focus.focusandroid.core.media.data.recorder.EncoderThread
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import java.nio.ByteBuffer
 import javax.microedition.khronos.egl.EGLConfig
@@ -103,6 +104,9 @@ class VideoRenderer(
     @Volatile
     private var isFrontLensFacing = false
 
+    @Volatile
+    private var privacyMode: PrivacyMode = PrivacyMode.Avatar
+
     // --- 실시간 인코더 연동용 ---
     @Volatile
     private var encoderSurface: Surface? = null
@@ -147,6 +151,13 @@ class VideoRenderer(
 
     fun setFrontLensFacing(isFront: Boolean) {
         isFrontLensFacing = isFront
+    }
+
+    fun setPrivacyMode(mode: PrivacyMode) {
+        if (privacyMode == mode) return
+        privacyMode = mode
+        previousPrivacyEllipses = emptyList()
+        privacyMaskColorsByTrackId.clear()
     }
 
     // ExoPlayer.setVideoSurface()는 메인 스레드에서만 호출 가능
@@ -355,29 +366,34 @@ class VideoRenderer(
             val frameAnalysisBuffer = analysisBuffer
             if (recordingEnabled && frameForRecording != null && frameAnalysisBuffer != null) {
                 encoderFboWriteIndex = nextEncoderBufferIndex(encoderFboWriteIndex)
-                val ellipses = stabilizePrivacyEllipses(
-                    previousEllipses = previousPrivacyEllipses,
-                    currentEllipses = buildColoredPrivacyEllipses(
-                        frame = frameForRecording,
-                        rgbaBuffer = frameAnalysisBuffer,
-                    ),
-                )
-                previousPrivacyEllipses = ellipses
                 GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, encoderFboIds[encoderFboWriteIndex])
                 GLES30.glViewport(0, 0, viewWidth, viewHeight)
                 GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
                 program.draw2DBlend(analysisPreviewTextureId)
-                if (ellipses.isNotEmpty()) {
-                    val maskRegion = calculatePrivacyMaskRegion(ellipses, viewWidth, viewHeight)
-                    if (maskRegion != null) {
-                        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, encoderFboIds[encoderFboWriteIndex])
-                        GLES30.glViewport(0, 0, viewWidth, viewHeight)
-                        privacyMaskProgram.compositeMaskedRegion(
-                            textureId = analysisPreviewTextureId,
-                            ellipses = ellipses,
-                            regionRect = maskRegion.regionRect,
-                        )
+                if (privacyMode != PrivacyMode.Original) {
+                    val ellipses = stabilizePrivacyEllipses(
+                        previousEllipses = previousPrivacyEllipses,
+                        currentEllipses = buildColoredPrivacyEllipses(
+                            frame = frameForRecording,
+                            rgbaBuffer = frameAnalysisBuffer,
+                        ),
+                    )
+                    previousPrivacyEllipses = ellipses
+                    if (ellipses.isNotEmpty()) {
+                        val maskRegion = calculatePrivacyMaskRegion(ellipses, viewWidth, viewHeight)
+                        if (maskRegion != null) {
+                            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, encoderFboIds[encoderFboWriteIndex])
+                            GLES30.glViewport(0, 0, viewWidth, viewHeight)
+                            privacyMaskProgram.compositeMaskedRegion(
+                                textureId = analysisPreviewTextureId,
+                                ellipses = ellipses,
+                                regionRect = maskRegion.regionRect,
+                            )
+                        }
                     }
+                } else {
+                    previousPrivacyEllipses = emptyList()
+                    privacyMaskColorsByTrackId.clear()
                 }
                 encoderTextureIdForSubmit = encoderFboTextureIds[encoderFboWriteIndex]
             }

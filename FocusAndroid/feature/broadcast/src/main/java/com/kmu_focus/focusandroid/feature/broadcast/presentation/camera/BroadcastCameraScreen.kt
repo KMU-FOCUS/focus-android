@@ -1,9 +1,8 @@
 package com.kmu_focus.focusandroid.feature.broadcast.presentation.camera
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
-import android.widget.Toast
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,11 +17,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import coil.compose.AsyncImage
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,15 +34,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.kmu_focus.focusandroid.core.ui.insets.focusSafeDrawingPadding
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPalette
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
 import com.kmu_focus.focusandroid.core.grpc.data.repository.GrpcMetadataRepositoryImpl
 import com.kmu_focus.focusandroid.core.media.data.recorder.Mp4VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.data.recorder.TeeVideoMuxerFactory
-import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraScreen
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraViewModel
@@ -83,13 +87,13 @@ interface BroadcastCameraEntryPoint {
 
 @Composable
 fun BroadcastCameraScreen(
-    broadcastId: String,
-    streamKey: String,
-    hlsUrl: String,
-    onBack: () -> Unit,
+    onRootBack: () -> Unit = {},
+    modifier: Modifier = Modifier,
     viewModel: BroadcastCameraViewModel = hiltViewModel(),
     cameraViewModel: CameraViewModel = hiltViewModel(),
 ) {
+    KeepImmersiveNavigationBars()
+
     val uiState by viewModel.uiState.collectAsState()
     val cameraUiState by cameraViewModel.uiState.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -103,17 +107,10 @@ fun BroadcastCameraScreen(
     var hasStartedRecorder by rememberSaveable(uiState.broadcastId) { mutableStateOf(false) }
     var hasRequestedServerStart by rememberSaveable(uiState.broadcastId) { mutableStateOf(false) }
     var isMenuPresented by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(broadcastId, streamKey, hlsUrl) {
-        viewModel.updateSession(
-            broadcastId = broadcastId,
-            streamKey = streamKey,
-            hlsUrl = hlsUrl,
-        )
-    }
-
-    LaunchedEffect(broadcastId) {
-        cameraViewModel.resetSessionState()
+    var liveStartedAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
+    var latestRecordingFilePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingReportSeed by remember {
+        mutableStateOf<CompletedBroadcastReport?>(null)
     }
 
     LaunchedEffect(cameraUiState.isCameraActive) {
@@ -142,6 +139,7 @@ fun BroadcastCameraScreen(
         }
 
         val debugRecordingFile = createDebugBroadcastRecordingFile(context, uiState.broadcastId)
+        latestRecordingFilePath = debugRecordingFile.absolutePath
         val teeMuxerFactory = TeeVideoMuxerFactory(
             primaryFactory = srtMuxerFactory,
             secondaryFactory = Mp4VideoMuxerFactory(),
@@ -217,28 +215,86 @@ fun BroadcastCameraScreen(
         }
     }
 
-    val displayedHlsUrl = if (uiState.hlsUrl.isNotBlank()) uiState.hlsUrl else hlsUrl
-    val handleExit = {
+    LaunchedEffect(uiState.isBroadcasting) {
+        if (uiState.isBroadcasting && liveStartedAtMillis == null) {
+            liveStartedAtMillis = System.currentTimeMillis()
+        }
+    }
+
+    LaunchedEffect(
+        uiState.isPreparing,
+        uiState.isBroadcasting,
+        uiState.isStopping,
+        uiState.error,
+        pendingReportSeed,
+    ) {
+        if (pendingReportSeed == null) {
+            return@LaunchedEffect
+        }
+        if (uiState.isPreparing || uiState.isBroadcasting || uiState.isStopping) {
+            return@LaunchedEffect
+        }
+        if (uiState.error == null) {
+            isMenuPresented = false
+        }
+        liveStartedAtMillis = null
+    }
+
+    val requestStopWithReport = {
+        val startedAt = liveStartedAtMillis ?: System.currentTimeMillis()
+        pendingReportSeed = buildCompletedBroadcastReport(
+            sessionId = uiState.broadcastId.ifBlank { "unknown" },
+            durationSec = ((System.currentTimeMillis() - startedAt) / 1000L).toInt(),
+            ownerCount = cameraUiState.registeredOwnerThumbnails.size,
+            recordingFilePath = latestRecordingFilePath,
+        )
+        cameraViewModel.stopRecording()
+        viewModel.stopBroadcasting()
+    }
+
+    val closeCurrentSession = {
         if (cameraUiState.isRecording) {
-            cameraViewModel.stopRecording()
-        }
-        if (uiState.isPreparing) {
+            if (uiState.isBroadcasting) {
+                requestStopWithReport()
+            } else {
+                cameraViewModel.stopRecording()
+            }
+        } else if (uiState.isPreparing) {
             viewModel.cancelPreparingBroadcast()
-        } else {
-            viewModel.stopBroadcasting()
+        } else if (uiState.isBroadcasting) {
+            requestStopWithReport()
         }
-        onBack()
+    }
+
+    BackHandler {
+        when {
+            isMenuPresented -> isMenuPresented = false
+            pendingReportSeed != null && !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping -> {
+                pendingReportSeed = null
+            }
+            uiState.isStopping -> Unit
+            uiState.isPreparing || uiState.isBroadcasting || cameraUiState.isRecording -> {
+                closeCurrentSession()
+            }
+            else -> onRootBack()
+        }
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(Color.Black),
     ) {
         CameraScreen(
             onRecordingComplete = {},
             modifier = Modifier.fillMaxSize(),
-            onBack = handleExit,
+            onBack = {
+                if (uiState.isPreparing || uiState.isBroadcasting || cameraUiState.isRecording) {
+                    closeCurrentSession()
+                } else {
+                    onRootBack()
+                }
+            },
             showDetectionControl = false,
             showRecordingControl = false,
             showMenuButton = false,
@@ -275,14 +331,21 @@ fun BroadcastCameraScreen(
             }
             OverlayChip(
                 text = if (cameraUiState.isDetecting) "Camera Ready" else "Camera Loading",
-                containerColor = Color(0xFF0369A1).copy(alpha = 0.78f),
+                containerColor = Color.Black.copy(alpha = 0.24f),
                 contentColor = Color.White,
             )
             OverlayChip(
-                text = "Avatar 자동 선택",
-                containerColor = Color.White.copy(alpha = 0.18f),
+                text = cameraUiState.privacyMode.displayTitle(),
+                containerColor = Color.Black.copy(alpha = 0.24f),
                 contentColor = Color.White,
             )
+            if (cameraUiState.registeredOwnerThumbnails.isNotEmpty()) {
+                OverlayChip(
+                    text = "Owner ${cameraUiState.registeredOwnerThumbnails.size}",
+                    containerColor = Color.Black.copy(alpha = 0.24f),
+                    contentColor = Color.White,
+                )
+            }
         }
 
         MenuButton(
@@ -305,28 +368,40 @@ fun BroadcastCameraScreen(
                     bottom = 26.dp,
                 ),
             label = when {
+                uiState.isStopping -> "방송 종료 중..."
                 uiState.isBroadcasting -> "방송 종료하기"
-                uiState.isPreparing -> "준비 취소"
-                else -> "방송 준비하기"
+                uiState.isPreparing -> "방송 시작 중..."
+                else -> "방송 시작하기"
             },
+            enabled = !uiState.isPreparing && !uiState.isStopping,
             onClick = {
                 when {
+                    uiState.isStopping -> Unit
                     uiState.isBroadcasting -> {
-                        cameraViewModel.stopRecording()
-                        viewModel.stopBroadcasting()
+                        requestStopWithReport()
                     }
-
-                    uiState.isPreparing -> {
-                        if (cameraUiState.isRecording) {
-                            cameraViewModel.stopRecording()
-                        }
-                        viewModel.cancelPreparingBroadcast()
-                    }
-
-                    else -> viewModel.prepareBroadcasting()
+                    else -> viewModel.startBroadcasting()
                 }
             },
         )
+
+        val transientStatus = when {
+            uiState.error != null -> uiState.error
+            uiState.isStopping -> "방송을 정리하는 중입니다."
+            uiState.isPreparing -> "방송을 생성하고 송출을 준비하는 중입니다."
+            else -> null
+        }
+        if (transientStatus != null) {
+            TransientOverlayChip(
+                text = transientStatus,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .focusSafeDrawingPadding(
+                        sides = WindowInsetsSides.Bottom,
+                        bottom = 100.dp,
+                    ),
+            )
+        }
 
         AnimatedVisibility(
             visible = isMenuPresented,
@@ -337,25 +412,51 @@ fun BroadcastCameraScreen(
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
         ) {
             BroadcastMenuPanel(
-                broadcastId = uiState.broadcastId,
-                streamKey = uiState.streamKey,
-                hlsUrl = displayedHlsUrl,
-                error = uiState.error,
-                srtState = uiState.srtState,
                 lensFacing = cameraUiState.lensFacing,
+                privacyMode = cameraUiState.privacyMode,
                 ownerThumbnailPaths = cameraUiState.registeredOwnerThumbnails,
                 onDismiss = { isMenuPresented = false },
-                onExit = handleExit,
-                onCopyHls = {
-                    copyToClipboard(context, displayedHlsUrl)
-                    Toast.makeText(context, "HLS 링크를 복사했습니다.", Toast.LENGTH_SHORT).show()
-                },
                 onSelectLensFacing = { target ->
                     if (cameraUiState.lensFacing != target) {
                         cameraViewModel.switchLensFacing()
                     }
                 },
+                onSelectPrivacyMode = cameraViewModel::setPrivacyMode,
             )
+        }
+
+        if (pendingReportSeed != null && !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping && uiState.error == null) {
+            PostBroadcastReportSheet(
+                report = pendingReportSeed!!,
+                onDismiss = {
+                    pendingReportSeed = null
+                    latestRecordingFilePath = null
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun KeepImmersiveNavigationBars() {
+    val view = LocalView.current
+    val activity = view.context as? Activity
+
+    DisposableEffect(view, activity) {
+        val window = activity?.window
+        if (window == null) {
+            onDispose { }
+        } else {
+            val controller = WindowCompat.getInsetsController(window, view)
+            val previousBehavior = controller.systemBarsBehavior
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.navigationBars())
+
+            onDispose {
+                controller.show(WindowInsetsCompat.Type.navigationBars())
+                controller.systemBarsBehavior = previousBehavior
+            }
         }
     }
 }
@@ -406,23 +507,32 @@ private fun OverlayChip(
 private fun FloatingBroadcastAction(
     label: String,
     onClick: () -> Unit,
+    enabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val colors = when {
+        label.contains("종료") -> listOf(FocusIosPalette.Danger, FocusIosPalette.DangerBright)
+        label.contains("시작") -> listOf(FocusIosPalette.Secondary, Color(0xFF10B981))
+        else -> listOf(FocusIosPalette.Primary, FocusIosPalette.PrimaryBright)
+    }
     Surface(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
         color = Color.Transparent,
-        shadowElevation = 12.dp,
+        shadowElevation = if (enabled) 12.dp else 0.dp,
     ) {
         Box(
             modifier = Modifier
                 .background(
                     brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFFDB1AFF),
-                            Color(0xFF3D1FFF),
-                        ),
+                        colors = if (enabled) colors else {
+                            listOf(
+                                Color(0xFF64748B),
+                                Color(0xFF94A3B8),
+                            )
+                        },
                     ),
                     shape = RoundedCornerShape(999.dp),
                 )
@@ -440,23 +550,18 @@ private fun FloatingBroadcastAction(
 
 @Composable
 private fun BroadcastMenuPanel(
-    broadcastId: String,
-    streamKey: String,
-    hlsUrl: String,
-    error: String?,
-    srtState: SrtConnectionState,
     lensFacing: LensFacing,
+    privacyMode: PrivacyMode,
     ownerThumbnailPaths: List<String>,
     onDismiss: () -> Unit,
-    onExit: () -> Unit,
-    onCopyHls: () -> Unit,
     onSelectLensFacing: (LensFacing) -> Unit,
+    onSelectPrivacyMode: (PrivacyMode) -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxHeight()
             .width(340.dp),
-        color = Color.White.copy(alpha = 0.94f),
+        color = Color.White.copy(alpha = 0.96f),
         shadowElevation = 18.dp,
     ) {
         val scrollState = rememberScrollState()
@@ -467,11 +572,16 @@ private fun BroadcastMenuPanel(
                 .padding(top = 30.dp, start = 24.dp, end = 24.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text(
-                text = "Broadcast Control",
-                style = MaterialTheme.typography.headlineSmall,
-                color = Color.Black.copy(alpha = 0.88f),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                FocusIosSecondaryButton(
+                    text = "닫기",
+                    onClick = onDismiss,
+                    modifier = Modifier.width(88.dp),
+                )
+            }
 
             PanelSection(
                 title = "Owner 관리",
@@ -480,32 +590,28 @@ private fun BroadcastMenuPanel(
                 if (ownerThumbnailPaths.isNotEmpty()) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         items(
-                            items = ownerThumbnailPaths,
-                            key = { it },
-                        ) { path ->
-                            OwnerThumbnailCard(
-                                path = path,
-                                label = "OWNER",
-                            )
-                        }
+                        items = ownerThumbnailPaths,
+                        key = { it },
+                    ) { path ->
+                        OwnerThumbnailCard(
+                            path = path,
+                        )
                     }
-                } else {
-                    EmptyPanelHint("얼굴을 탭해 owner를 등록하면 여기에 표시됩니다.")
+                }
                 }
             }
 
             PanelSection(
-                title = "카메라",
-                subtitle = "렌즈 방향 전환",
+                title = "카메라 전환",
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     LensToggleChip(
-                        text = "전면",
+                        text = "전면 카메라",
                         selected = lensFacing == LensFacing.FRONT,
                         onClick = { onSelectLensFacing(LensFacing.FRONT) },
                     )
                     LensToggleChip(
-                        text = "후면",
+                        text = "후면 카메라",
                         selected = lensFacing == LensFacing.BACK,
                         onClick = { onSelectLensFacing(LensFacing.BACK) },
                     )
@@ -514,65 +620,39 @@ private fun BroadcastMenuPanel(
 
             PanelSection(
                 title = "개인정보 처리",
-                subtitle = "방송 시작 직전에 사용 가능한 첫 아바타를 자동 선택합니다.",
             ) {
-                OverlayChip(
-                    text = "Avatar 자동 선택",
-                    containerColor = Color(0xFFEEF2FF),
-                    contentColor = Color(0xFF4338CA),
-                )
-            }
-
-            PanelSection(
-                title = "방송 상태",
-                subtitle = "세션 및 송출 연결 정보",
-            ) {
-                MetaItem(label = "Session ID", value = broadcastId.ifBlank { "-" })
-                MetaItem(label = "Stream Key", value = streamKey.ifBlank { "-" })
-                MetaItem(label = "SRT", value = srtState.name)
-                if (hlsUrl.isNotBlank()) {
-                    MetaItem(label = "HLS", value = hlsUrl)
-                    OutlinedButton(
-                        onClick = onCopyHls,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("HLS 링크 복사")
-                    }
-                }
-                if (error != null) {
-                    Text(
-                        text = error,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PrivacyToggleChip(
+                        text = PrivacyMode.Avatar.displayTitle(),
+                        selected = privacyMode == PrivacyMode.Avatar,
+                        onClick = { onSelectPrivacyMode(PrivacyMode.Avatar) },
                     )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("닫기")
-                }
-                OutlinedButton(
-                    onClick = onExit,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("나가기")
+                    PrivacyToggleChip(
+                        text = PrivacyMode.Mosaic.displayTitle(),
+                        selected = privacyMode == PrivacyMode.Mosaic,
+                        onClick = { onSelectPrivacyMode(PrivacyMode.Mosaic) },
+                    )
+                    PrivacyToggleChip(
+                        text = PrivacyMode.Original.displayTitle(),
+                        selected = privacyMode == PrivacyMode.Original,
+                        onClick = { onSelectPrivacyMode(PrivacyMode.Original) },
+                    )
                 }
             }
         }
     }
 }
 
+private fun PrivacyMode.displayTitle(): String = when (this) {
+    PrivacyMode.Avatar -> "아바타"
+    PrivacyMode.Mosaic -> "블러"
+    PrivacyMode.Original -> "비활성화"
+}
+
 @Composable
 private fun PanelSection(
     title: String,
-    subtitle: String,
+    subtitle: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -582,11 +662,13 @@ private fun PanelSection(
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.Black.copy(alpha = 0.9f),
             )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.Black.copy(alpha = 0.58f),
-            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Black.copy(alpha = 0.58f),
+                )
+            }
         }
         content()
     }
@@ -595,7 +677,6 @@ private fun PanelSection(
 @Composable
 private fun OwnerThumbnailCard(
     path: String,
-    label: String,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -609,32 +690,10 @@ private fun OwnerThumbnailCard(
         ) {
             AsyncImage(
                 model = File(path),
-                contentDescription = label,
+                contentDescription = "Owner",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomStart)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.66f),
-                            ),
-                        ),
-                    )
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            ) {
-                Text(
-                    text = label,
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
         }
     }
 }
@@ -660,22 +719,21 @@ private fun LensToggleChip(
 }
 
 @Composable
-private fun MetaItem(
-    label: String,
-    value: String,
+private fun PrivacyToggleChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) Color(0xFF10B981) else Color.Black.copy(alpha = 0.05f),
+    ) {
         Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.Black.copy(alpha = 0.55f),
-        )
-        Text(
-            text = value,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyLarge,
-            color = Color.Black.copy(alpha = 0.88f),
+            text = text,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            color = if (selected) Color.White else Color.Black.copy(alpha = 0.74f),
+            style = MaterialTheme.typography.labelLarge,
         )
     }
 }
@@ -689,8 +747,21 @@ private fun EmptyPanelHint(text: String) {
     )
 }
 
-private fun copyToClipboard(context: Context, value: String) {
-    if (value.isBlank()) return
-    val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboardManager.setPrimaryClip(ClipData.newPlainText("hlsUrl", value))
+@Composable
+private fun TransientOverlayChip(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color.Black.copy(alpha = 0.34f),
+        shape = RoundedCornerShape(999.dp),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            color = Color.White,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
 }

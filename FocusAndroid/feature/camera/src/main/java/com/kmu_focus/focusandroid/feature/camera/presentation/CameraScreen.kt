@@ -177,6 +177,10 @@ fun CameraScreen(
         viewModel.clearRecordingFile()
     }
 
+    LaunchedEffect(uiState.privacyMode, glViewRef) {
+        glViewRef?.setPrivacyMode(uiState.privacyMode)
+    }
+
     if (!hasAllPermissions) {
         PermissionRequiredScreen(
             onRequestPermission = { permissionLauncher.launch(requiredPermissions) },

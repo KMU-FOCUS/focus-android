@@ -7,6 +7,8 @@ import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.broadcast.BuildConfig
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.BroadcastStreamingUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.DeleteBroadcastUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -27,28 +29,17 @@ data class BroadcastCameraUiState(
     val srtState: SrtConnectionState = SrtConnectionState.DISCONNECTED,
     val isPreparing: Boolean = false,
     val isBroadcasting: Boolean = false,
+    val isStopping: Boolean = false,
     val error: String? = null,
 )
 
 @HiltViewModel
 class BroadcastCameraViewModel @Inject constructor(
+    private val createBroadcastUseCase: CreateBroadcastUseCase,
+    private val deleteBroadcastUseCase: DeleteBroadcastUseCase,
     private val broadcastStreamingUseCase: BroadcastStreamingUseCase,
     private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
-
-    constructor(
-        broadcastStreamingUseCase: BroadcastStreamingUseCase,
-        broadcastId: String,
-        streamKey: String,
-    ) : this(
-        broadcastStreamingUseCase = broadcastStreamingUseCase,
-        savedStateHandle = SavedStateHandle(
-            mapOf(
-                BROADCAST_ID_KEY to broadcastId,
-                STREAM_KEY_KEY to streamKey,
-            ),
-        ),
-    )
 
     private val _uiState = MutableStateFlow(
         BroadcastCameraUiState(
@@ -60,6 +51,7 @@ class BroadcastCameraViewModel @Inject constructor(
     val uiState: StateFlow<BroadcastCameraUiState> = _uiState.asStateFlow()
 
     private var heartbeatJob: Job? = null
+    private var startBroadcastJob: Job? = null
 
     val currentMuxerFactory: RealTimeRecorder.VideoMuxerFactory?
         get() = broadcastStreamingUseCase.currentMuxerFactory
@@ -82,8 +74,12 @@ class BroadcastCameraViewModel @Inject constructor(
     }
 
     fun prepareBroadcasting() {
+        startBroadcasting()
+    }
+
+    fun startBroadcasting() {
         val currentState = uiState.value
-        if (currentState.isBroadcasting || currentState.isPreparing) {
+        if (currentState.isBroadcasting || currentState.isPreparing || currentState.isStopping) {
             return
         }
 
@@ -91,25 +87,45 @@ class BroadcastCameraViewModel @Inject constructor(
             current.copy(
                 error = null,
                 isPreparing = true,
+                isStopping = false,
                 srtState = SrtConnectionState.CONNECTING,
             )
         }
 
-        viewModelScope.launch {
-            broadcastStreamingUseCase.prepareBroadcastStreaming(
-                streamKey = currentState.streamKey,
-                mediaMtxHost = BuildConfig.MEDIA_MTX_HOST,
-                mediaMtxPort = BuildConfig.MEDIA_MTX_PORT,
-            ).onFailure { throwable ->
-                _uiState.update { state ->
-                    state.copy(
-                        isPreparing = false,
-                        isBroadcasting = false,
+        startBroadcastJob?.cancel()
+        startBroadcastJob = viewModelScope.launch {
+            createBroadcastUseCase(buildAutoBroadcastTitle())
+                .onSuccess { broadcast ->
+                    updateSession(
+                        broadcastId = broadcast.broadcastId,
+                        streamKey = broadcast.streamKey,
+                        hlsUrl = broadcast.hlsUrl.orEmpty(),
+                    )
+
+                    broadcastStreamingUseCase.prepareBroadcastStreaming(
+                        streamKey = broadcast.streamKey,
+                        mediaMtxHost = BuildConfig.MEDIA_MTX_HOST,
+                        mediaMtxPort = BuildConfig.MEDIA_MTX_PORT,
+                    ).onFailure { throwable ->
+                        val message = mergeErrorMessages(
+                            primary = throwable.message ?: "송출 준비 실패",
+                            secondary = deleteBroadcastUseCase(broadcast.broadcastId)
+                                .exceptionOrNull()
+                                ?.message,
+                        )
+                        clearSession(
+                            error = message,
+                            srtState = SrtConnectionState.ERROR,
+                        )
+                    }
+                }
+                .onFailure { throwable ->
+                    clearSession(
+                        error = throwable.message ?: "방송 생성 실패",
                         srtState = SrtConnectionState.ERROR,
-                        error = throwable.message ?: "송출 준비 실패",
                     )
                 }
-            }
+            startBroadcastJob = null
         }
     }
 
@@ -125,7 +141,7 @@ class BroadcastCameraViewModel @Inject constructor(
 
     fun confirmBroadcastStarted(onFailure: () -> Unit = {}) {
         val currentState = uiState.value
-        if (!currentState.isPreparing || currentState.isBroadcasting) {
+        if (!currentState.isPreparing || currentState.isBroadcasting || currentState.broadcastId.isBlank()) {
             return
         }
 
@@ -144,6 +160,7 @@ class BroadcastCameraViewModel @Inject constructor(
                         hlsUrl = broadcast.hlsUrl.orEmpty(),
                         isPreparing = false,
                         isBroadcasting = true,
+                        isStopping = false,
                         srtState = SrtConnectionState.CONNECTED,
                         error = null,
                     )
@@ -153,6 +170,7 @@ class BroadcastCameraViewModel @Inject constructor(
                     state.copy(
                         isPreparing = false,
                         isBroadcasting = false,
+                        isStopping = false,
                         srtState = SrtConnectionState.ERROR,
                         error = throwable.message ?: "방송 시작 실패",
                     )
@@ -166,104 +184,131 @@ class BroadcastCameraViewModel @Inject constructor(
         clearError: Boolean = true,
         message: String? = null,
     ) {
+        val currentState = uiState.value
+        if (currentState.isStopping) {
+            return
+        }
+
+        startBroadcastJob?.cancel()
+        startBroadcastJob = null
         heartbeatJob?.cancel()
         heartbeatJob = null
-        _uiState.update { current ->
-            current.copy(
-                isPreparing = false,
-                isBroadcasting = false,
-                srtState = SrtConnectionState.DISCONNECTED,
-                error = message ?: if (clearError) null else current.error,
-            )
-        }
 
-        viewModelScope.launch {
-            broadcastStreamingUseCase.stopPreparedStreaming()
-        }
-    }
-
-    fun startBroadcasting() {
-        val currentState = uiState.value
-        if (currentState.isBroadcasting) {
+        val broadcastId = currentState.broadcastId
+        val preservedError = message ?: if (clearError) null else currentState.error
+        if (broadcastId.isBlank()) {
+            clearSession(error = preservedError)
             return
         }
 
         _uiState.update { current ->
             current.copy(
+                isPreparing = false,
+                isBroadcasting = false,
+                isStopping = true,
+                srtState = SrtConnectionState.DISCONNECTED,
                 error = null,
-                srtState = SrtConnectionState.CONNECTING,
             )
         }
 
         viewModelScope.launch {
-            val result = broadcastStreamingUseCase.startBroadcast(
-                broadcastId = currentState.broadcastId,
-                streamKey = currentState.streamKey,
-                mediaMtxHost = BuildConfig.MEDIA_MTX_HOST,
-                mediaMtxPort = BuildConfig.MEDIA_MTX_PORT,
+            val abortFailure = runCatching {
+                broadcastStreamingUseCase.stopPreparedStreaming()
+            }.exceptionOrNull()
+            val deleteFailure = deleteBroadcastUseCase(broadcastId).exceptionOrNull()
+            clearSession(
+                error = mergeErrorMessages(
+                    primary = abortFailure?.message ?: preservedError,
+                    secondary = deleteFailure?.message,
+                ),
+                srtState = if (abortFailure != null || deleteFailure != null) {
+                    SrtConnectionState.ERROR
+                } else {
+                    SrtConnectionState.DISCONNECTED
+                },
             )
-
-            result.onSuccess {
-                heartbeatJob?.cancel()
-                heartbeatJob = broadcastStreamingUseCase.startHeartbeat(
-                    broadcastId = currentState.broadcastId,
-                    scope = viewModelScope,
-                )
-                _uiState.update { state ->
-                    state.copy(
-                        isPreparing = false,
-                        isBroadcasting = true,
-                        srtState = SrtConnectionState.CONNECTED,
-                        error = null,
-                    )
-                }
-            }.onFailure { throwable ->
-                _uiState.update { state ->
-                    state.copy(
-                        isPreparing = false,
-                        isBroadcasting = false,
-                        srtState = SrtConnectionState.ERROR,
-                        error = throwable.message ?: "방송 시작 실패",
-                    )
-                }
-            }
         }
     }
 
     fun stopBroadcasting() {
         val currentState = uiState.value
+        if (currentState.isStopping) {
+            return
+        }
         if (currentState.isPreparing && !currentState.isBroadcasting) {
             cancelPreparingBroadcast()
             return
         }
-        if (!currentState.isBroadcasting) {
+        if (!currentState.isBroadcasting || currentState.broadcastId.isBlank()) {
             return
         }
 
+        startBroadcastJob?.cancel()
+        startBroadcastJob = null
         heartbeatJob?.cancel()
         heartbeatJob = null
+
+        val broadcastId = currentState.broadcastId
         _uiState.update { current ->
             current.copy(
                 isPreparing = false,
                 isBroadcasting = false,
+                isStopping = true,
                 error = null,
                 srtState = SrtConnectionState.DISCONNECTED,
             )
         }
 
         viewModelScope.launch {
-            broadcastStreamingUseCase.stopBroadcast(currentState.broadcastId)
-                .onFailure { throwable ->
-                    _uiState.update { state ->
-                        state.copy(
-                            error = throwable.message ?: "방송 종료 실패",
-                        )
-                    }
-                }
+            val stopFailure = broadcastStreamingUseCase.stopBroadcast(broadcastId).exceptionOrNull()
+            val deleteFailure = deleteBroadcastUseCase(broadcastId).exceptionOrNull()
+            clearSession(
+                error = mergeErrorMessages(
+                    primary = stopFailure?.message,
+                    secondary = deleteFailure?.message,
+                ),
+                srtState = if (stopFailure != null || deleteFailure != null) {
+                    SrtConnectionState.ERROR
+                } else {
+                    SrtConnectionState.DISCONNECTED
+                },
+            )
+        }
+    }
+
+    private fun clearSession(
+        error: String? = null,
+        srtState: SrtConnectionState = SrtConnectionState.DISCONNECTED,
+    ) {
+        savedStateHandle[BROADCAST_ID_KEY] = ""
+        savedStateHandle[STREAM_KEY_KEY] = ""
+        savedStateHandle[HLS_URL_KEY] = ""
+        _uiState.update {
+            BroadcastCameraUiState(
+                srtState = srtState,
+                error = error,
+            )
+        }
+    }
+
+    private fun buildAutoBroadcastTitle(): String {
+        return "포커스방송"
+    }
+
+    private fun mergeErrorMessages(
+        primary: String?,
+        secondary: String?,
+    ): String? {
+        return when {
+            primary.isNullOrBlank() && secondary.isNullOrBlank() -> null
+            primary.isNullOrBlank() -> secondary
+            secondary.isNullOrBlank() -> primary
+            else -> "$primary / 정리 실패: $secondary"
         }
     }
 
     override fun onCleared() {
+        startBroadcastJob?.cancel()
         heartbeatJob?.cancel()
         super.onCleared()
     }

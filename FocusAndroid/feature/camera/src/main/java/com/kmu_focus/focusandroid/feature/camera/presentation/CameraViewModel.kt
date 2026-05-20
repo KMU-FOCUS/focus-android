@@ -9,6 +9,7 @@ import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraAnalysisUs
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraRecordingUseCase
 import com.kmu_focus.focusandroid.core.media.di.IoDispatcher
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
@@ -28,6 +29,7 @@ data class CameraUiState(
     val isDetecting: Boolean = false,
     val isRecording: Boolean = false,
     val lensFacing: LensFacing = LensFacing.BACK,
+    val privacyMode: PrivacyMode = PrivacyMode.Avatar,
     val detectedFaces: List<DetectedFace> = emptyList(),
     val faceLabels: List<Boolean?> = emptyList(),
     val trackingIds: List<Int> = emptyList(),
@@ -68,6 +70,12 @@ class CameraViewModel @Inject constructor(
 
     @Volatile
     private var pendingOwnerRegistrationTrackId: Int? = null
+
+    fun setPrivacyMode(mode: PrivacyMode) {
+        if (_uiState.value.privacyMode == mode) return
+        cameraAnalysisUseCase.setPrivacyMode(mode)
+        _uiState.value = _uiState.value.copy(privacyMode = mode)
+    }
 
     fun setEncoderSurfaceDispatcher(dispatcher: ((Surface?, Int, Int) -> Unit)?) {
         encoderSurfaceDispatcher = dispatcher

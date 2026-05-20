@@ -1,11 +1,14 @@
 package com.kmu_focus.focusandroid.feature.camera.domain.repository
 
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.OwnerRegistrationResult
 import java.nio.ByteBuffer
 
 interface CameraAnalysisRepository {
+    fun setPrivacyMode(mode: PrivacyMode) {}
+
     fun updateSourceFrameSize(
         width: Int,
         height: Int,

@@ -17,6 +17,7 @@ import com.kmu_focus.focusandroid.core.media.data.processor.FrameProcessor
 import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
 import com.kmu_focus.focusandroid.core.media.di.IoDispatcher
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.os.Environment
 import java.io.File
@@ -74,6 +75,10 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
 
     init {
         realTimeRecorder.onVideoPtsBaseSet = { baseUs -> setEncoderPtsBaseUs(baseUs) }
+    }
+
+    override fun setPrivacyMode(mode: PrivacyMode) {
+        frameProcessor.setPrivacyMode(mode)
     }
 
     override fun updateSourceFrameSize(

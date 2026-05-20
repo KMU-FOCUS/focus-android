@@ -52,12 +52,18 @@ import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosGradientBackground
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPalette
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPanelHeader
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSectionCard
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
 import com.kmu_focus.focusandroid.core.metadata.domain.entity.FaceData
 import kotlinx.coroutines.delay
 import java.util.Locale
 
 @Composable
 fun MetadataReviewScreen(
+    onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: MetadataReviewViewModel = hiltViewModel(),
 ) {
@@ -163,18 +169,30 @@ fun MetadataReviewScreen(
         else -> 1
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+    FocusIosGradientBackground(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+        FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
+            FocusIosPanelHeader(
+                title = "BBox 리뷰",
+                subtitle = "영상과 메타데이터 JSON을 동시에 불러와 프레임 단위로 검수합니다.",
+            )
+            FocusIosSecondaryButton(
+                text = "라이브 홈으로 돌아가기",
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
         Surface(
             shape = RoundedCornerShape(28.dp),
             tonalElevation = 4.dp,
-            color = MaterialTheme.colorScheme.surface,
+            color = FocusIosPalette.Surface,
         ) {
             Column(
                 modifier = Modifier
@@ -185,11 +203,12 @@ fun MetadataReviewScreen(
                 Text(
                     text = "BBox 리뷰",
                     style = MaterialTheme.typography.headlineSmall,
+                    color = FocusIosPalette.Text,
                 )
                 Text(
                     text = "동영상과 메타데이터 JSON을 선택하면 재생 위치 기준으로 바운딩 박스를 겹쳐서 확인할 수 있습니다.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = FocusIosPalette.TextMuted,
                 )
             }
         }
@@ -413,6 +432,7 @@ fun MetadataReviewScreen(
                 }
             }
         }
+    }
     }
 }
 

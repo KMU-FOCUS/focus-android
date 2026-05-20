@@ -1,11 +1,13 @@
 package com.kmu_focus.focusandroid.feature.broadcast.presentation
 
+import androidx.lifecycle.SavedStateHandle
+import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastStatus
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.BroadcastStreamingUseCase
-import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.StopBroadcastUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
+import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.DeleteBroadcastUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.camera.BroadcastCameraViewModel
-import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -28,14 +30,29 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class BroadcastCameraViewModelTest {
 
+    private lateinit var createBroadcastUseCase: CreateBroadcastUseCase
+    private lateinit var deleteBroadcastUseCase: DeleteBroadcastUseCase
     private lateinit var broadcastStreamingUseCase: BroadcastStreamingUseCase
     private lateinit var viewModel: BroadcastCameraViewModel
 
     private val testDispatcher = UnconfinedTestDispatcher()
+    private val preparedBroadcast = Broadcast(
+        broadcastId = "broadcast-1",
+        title = "테스트 방송",
+        status = BroadcastStatus.READY,
+        streamKey = "stream-key-abc",
+        hlsUrl = "https://cdn.example.com/live.m3u8",
+        memberName = "tester",
+        memberId = "member-1",
+        startedAt = null,
+        endedAt = null,
+    )
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        createBroadcastUseCase = mockk()
+        deleteBroadcastUseCase = mockk()
         broadcastStreamingUseCase = mockk(relaxed = true)
     }
 
@@ -45,163 +62,146 @@ class BroadcastCameraViewModelTest {
     }
 
     @Test
-    fun `초기 상태는 미방송 상태이다`() {
+    fun `초기 상태는 세션 없는 라이브 홈이다`() {
         viewModel = BroadcastCameraViewModel(
+            createBroadcastUseCase = createBroadcastUseCase,
+            deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
-            broadcastId = "broadcast-1",
-            streamKey = "stream-key-abc",
+            savedStateHandle = SavedStateHandle(),
         )
 
         val state = viewModel.uiState.value
-        assertEquals("broadcast-1", state.broadcastId)
-        assertEquals("stream-key-abc", state.streamKey)
+        assertEquals("", state.broadcastId)
+        assertEquals("", state.streamKey)
         assertFalse(state.isBroadcasting)
+        assertFalse(state.isPreparing)
+        assertFalse(state.isStopping)
         assertEquals(SrtConnectionState.DISCONNECTED, state.srtState)
         assertNull(state.error)
     }
 
     @Test
-    fun `startBroadcasting 성공 시 isBroadcasting이 true가 된다`() = runTest {
+    fun `startBroadcasting 성공 시 방송을 생성하고 준비 상태로 진입한다`() = runTest {
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
         coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
+            broadcastStreamingUseCase.prepareBroadcastStreaming(
+                streamKey = preparedBroadcast.streamKey,
+                mediaMtxHost = any(),
+                mediaMtxPort = any(),
+            )
         } returns Result.success(Unit)
-        every {
-            broadcastStreamingUseCase.startHeartbeat(any(), any())
-        } returns Job()
 
         viewModel = BroadcastCameraViewModel(
+            createBroadcastUseCase = createBroadcastUseCase,
+            deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
-            broadcastId = "broadcast-1",
-            streamKey = "stream-key-abc",
+            savedStateHandle = SavedStateHandle(),
         )
 
         viewModel.startBroadcasting()
 
-        assertTrue(viewModel.uiState.value.isBroadcasting)
+        val state = viewModel.uiState.value
+        assertTrue(state.isPreparing)
+        assertFalse(state.isBroadcasting)
+        assertEquals("broadcast-1", state.broadcastId)
+        assertEquals("stream-key-abc", state.streamKey)
+        assertEquals(SrtConnectionState.CONNECTING, state.srtState)
+        assertNull(state.error)
     }
 
     @Test
     fun `startBroadcasting 실패 시 error가 설정된다`() = runTest {
-        coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
-        } returns Result.failure(RuntimeException("SRT 연결 실패"))
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.failure(RuntimeException("방송 생성 실패"))
 
         viewModel = BroadcastCameraViewModel(
+            createBroadcastUseCase = createBroadcastUseCase,
+            deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
-            broadcastId = "broadcast-1",
-            streamKey = "stream-key-abc",
+            savedStateHandle = SavedStateHandle(),
         )
 
         viewModel.startBroadcasting()
 
-        assertFalse(viewModel.uiState.value.isBroadcasting)
-        assertEquals("SRT 연결 실패", viewModel.uiState.value.error)
+        assertFalse(viewModel.uiState.value.isPreparing)
+        assertEquals("방송 생성 실패", viewModel.uiState.value.error)
     }
 
     @Test
-    fun `stopBroadcasting 호출 시 isBroadcasting이 false가 된다`() = runTest {
-        coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
-        } returns Result.success(Unit)
-        every {
-            broadcastStreamingUseCase.startHeartbeat(any(), any())
-        } returns Job()
-        coEvery {
-            broadcastStreamingUseCase.stopBroadcast(any())
-        } returns Result.success(Unit)
+    fun `confirmBroadcastStarted 성공 시 방송 중 상태가 된다`() = runTest {
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
+        coEvery { broadcastStreamingUseCase.prepareBroadcastStreaming(any(), any(), any()) } returns Result.success(Unit)
+        coEvery { broadcastStreamingUseCase.confirmBroadcastStarted("broadcast-1") } returns Result.success(
+            preparedBroadcast.copy(status = BroadcastStatus.ON_AIR),
+        )
+        every { broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any()) } returns Job()
 
         viewModel = BroadcastCameraViewModel(
+            createBroadcastUseCase = createBroadcastUseCase,
+            deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
-            broadcastId = "broadcast-1",
-            streamKey = "stream-key-abc",
+            savedStateHandle = SavedStateHandle(),
         )
 
         viewModel.startBroadcasting()
-        assertTrue(viewModel.uiState.value.isBroadcasting)
+        viewModel.confirmBroadcastStarted()
 
-        viewModel.stopBroadcasting()
-        assertFalse(viewModel.uiState.value.isBroadcasting)
+        val state = viewModel.uiState.value
+        assertTrue(state.isBroadcasting)
+        assertFalse(state.isPreparing)
+        assertEquals(SrtConnectionState.CONNECTED, state.srtState)
     }
 
     @Test
-    fun `stopBroadcasting 호출 시 stopBroadcast UseCase가 호출된다`() = runTest {
-        coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
-        } returns Result.success(Unit)
-        every {
-            broadcastStreamingUseCase.startHeartbeat(any(), any())
-        } returns Job()
-        coEvery {
-            broadcastStreamingUseCase.stopBroadcast("broadcast-1")
-        } returns Result.success(Unit)
+    fun `stopBroadcasting 호출 시 방송 종료 후 삭제까지 수행한다`() = runTest {
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
+        coEvery { broadcastStreamingUseCase.prepareBroadcastStreaming(any(), any(), any()) } returns Result.success(Unit)
+        coEvery { broadcastStreamingUseCase.confirmBroadcastStarted("broadcast-1") } returns Result.success(
+            preparedBroadcast.copy(status = BroadcastStatus.ON_AIR),
+        )
+        every { broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any()) } returns Job()
+        coEvery { broadcastStreamingUseCase.stopBroadcast("broadcast-1") } returns Result.success(Unit)
+        coEvery { deleteBroadcastUseCase.invoke("broadcast-1") } returns Result.success(Unit)
 
         viewModel = BroadcastCameraViewModel(
+            createBroadcastUseCase = createBroadcastUseCase,
+            deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
-            broadcastId = "broadcast-1",
-            streamKey = "stream-key-abc",
+            savedStateHandle = SavedStateHandle(),
         )
 
         viewModel.startBroadcasting()
+        viewModel.confirmBroadcastStarted()
         viewModel.stopBroadcasting()
 
+        val state = viewModel.uiState.value
+        assertFalse(state.isBroadcasting)
+        assertFalse(state.isPreparing)
+        assertFalse(state.isStopping)
+        assertEquals("", state.broadcastId)
+        assertEquals(SrtConnectionState.DISCONNECTED, state.srtState)
         coVerify(exactly = 1) { broadcastStreamingUseCase.stopBroadcast("broadcast-1") }
+        coVerify(exactly = 1) { deleteBroadcastUseCase.invoke("broadcast-1") }
     }
 
     @Test
-    fun `방송 중이 아닐 때 stopBroadcasting 호출 시 무시된다`() = runTest {
-        viewModel = BroadcastCameraViewModel(
-            broadcastStreamingUseCase = broadcastStreamingUseCase,
-            broadcastId = "broadcast-1",
-            streamKey = "stream-key-abc",
-        )
-
-        viewModel.stopBroadcasting()
-
-        coVerify(exactly = 0) { broadcastStreamingUseCase.stopBroadcast(any()) }
-    }
-
-    @Test
-    fun `startBroadcasting 성공 시 하트비트가 시작된다`() = runTest {
-        coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
-        } returns Result.success(Unit)
-        every {
-            broadcastStreamingUseCase.startHeartbeat(any(), any())
-        } returns Job()
+    fun `cancelPreparingBroadcast 호출 시 생성된 방송을 삭제한다`() = runTest {
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
+        coEvery { broadcastStreamingUseCase.prepareBroadcastStreaming(any(), any(), any()) } returns Result.success(Unit)
+        coEvery { deleteBroadcastUseCase.invoke("broadcast-1") } returns Result.success(Unit)
+        coEvery { broadcastStreamingUseCase.stopPreparedStreaming() } returns Unit
 
         viewModel = BroadcastCameraViewModel(
+            createBroadcastUseCase = createBroadcastUseCase,
+            deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
-            broadcastId = "broadcast-1",
-            streamKey = "stream-key-abc",
+            savedStateHandle = SavedStateHandle(),
         )
 
         viewModel.startBroadcasting()
+        viewModel.cancelPreparingBroadcast()
 
-        every {
-            broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any())
-        }
-    }
-
-    @Test
-    fun `error 발생 후 다시 시작하면 error가 초기화된다`() = runTest {
-        coEvery {
-            broadcastStreamingUseCase.startBroadcast(any(), any(), any(), any())
-        } returns Result.failure(RuntimeException("실패")) andThen Result.success(Unit)
-        every {
-            broadcastStreamingUseCase.startHeartbeat(any(), any())
-        } returns Job()
-
-        viewModel = BroadcastCameraViewModel(
-            broadcastStreamingUseCase = broadcastStreamingUseCase,
-            broadcastId = "broadcast-1",
-            streamKey = "stream-key-abc",
-        )
-
-        viewModel.startBroadcasting()
-        assertEquals("실패", viewModel.uiState.value.error)
-
-        viewModel.startBroadcasting()
-        assertNull(viewModel.uiState.value.error)
-        assertTrue(viewModel.uiState.value.isBroadcasting)
+        assertEquals("", viewModel.uiState.value.broadcastId)
+        assertFalse(viewModel.uiState.value.isPreparing)
+        coVerify(exactly = 1) { deleteBroadcastUseCase.invoke("broadcast-1") }
     }
 }

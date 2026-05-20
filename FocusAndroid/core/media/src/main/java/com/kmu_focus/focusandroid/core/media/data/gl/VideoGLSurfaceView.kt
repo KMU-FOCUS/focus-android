@@ -4,6 +4,7 @@ import android.content.Context
 import android.opengl.GLSurfaceView
 import android.util.Log
 import android.view.Surface
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import java.nio.ByteBuffer
 
@@ -54,6 +55,12 @@ class VideoGLSurfaceView(
     fun setFrontLensFacing(isFront: Boolean) {
         queueEvent {
             renderer.setFrontLensFacing(isFront)
+        }
+    }
+
+    fun setPrivacyMode(mode: PrivacyMode) {
+        queueEvent {
+            renderer.setPrivacyMode(mode)
         }
     }
 

@@ -3,6 +3,7 @@ package com.kmu_focus.focusandroid.feature.camera.domain.usecase
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.OwnerRegistrationResult
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraAnalysisRepository
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import java.nio.ByteBuffer
 import javax.inject.Inject
@@ -10,6 +11,10 @@ import javax.inject.Inject
 class CameraAnalysisUseCase @Inject constructor(
     private val cameraAnalysisRepository: CameraAnalysisRepository,
 ) {
+    fun setPrivacyMode(mode: PrivacyMode) {
+        cameraAnalysisRepository.setPrivacyMode(mode)
+    }
+
     fun updateSourceFrameSize(
         width: Int,
         height: Int,
