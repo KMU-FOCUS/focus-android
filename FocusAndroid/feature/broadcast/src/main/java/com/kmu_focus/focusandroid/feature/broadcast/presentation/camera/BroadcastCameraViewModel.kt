@@ -6,9 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.broadcast.BuildConfig
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.BroadcastStreamingUseCase
-import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CompleteBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.DeleteBroadcastUseCase
@@ -21,11 +22,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val BROADCAST_ID_KEY = "broadcastId"
 private const val STREAM_KEY_KEY = "streamKey"
 private const val HLS_URL_KEY = "hlsUrl"
+private const val ANALYSIS_POLL_INTERVAL_MS = 2_000L
+private const val ANALYSIS_MAX_POLL_ATTEMPTS = 15
 
 data class BroadcastCameraUiState(
     val broadcastId: String = "",
@@ -47,7 +51,6 @@ class BroadcastCameraViewModel @Inject constructor(
     private val deleteBroadcastUseCase: DeleteBroadcastUseCase,
     private val broadcastStreamingUseCase: BroadcastStreamingUseCase,
     private val createBroadcastAnalysisJobUseCase: CreateBroadcastAnalysisJobUseCase,
-    private val completeBroadcastAnalysisJobUseCase: CompleteBroadcastAnalysisJobUseCase,
     private val getLatestBroadcastAnalysisUseCase: GetLatestBroadcastAnalysisUseCase,
     private val getBroadcastHighlightsUseCase: GetBroadcastHighlightsUseCase,
     private val savedStateHandle: SavedStateHandle,
@@ -311,27 +314,45 @@ class BroadcastCameraViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            val seededReport = reportSeed.copy(broadcastId = broadcastId)
             val stopFailure = broadcastStreamingUseCase.stopBroadcast(broadcastId).exceptionOrNull()
-            val completedReport = if (stopFailure == null) {
-                buildCompletedReport(
-                    broadcastId = broadcastId,
-                    seed = reportSeed.copy(broadcastId = broadcastId),
+            if (stopFailure != null) {
+                val deleteFailure = deleteBroadcastUseCase(broadcastId).exceptionOrNull()
+                clearSession(
+                    error = mergeErrorMessages(
+                        primary = stopFailure.message,
+                        secondary = deleteFailure?.message,
+                    ),
+                    srtState = if (deleteFailure != null) {
+                        SrtConnectionState.ERROR
+                    } else {
+                        SrtConnectionState.DISCONNECTED
+                    },
+                    completedReport = null,
                 )
-            } else {
-                null
+                return@launch
             }
-            val deleteFailure = deleteBroadcastUseCase(broadcastId).exceptionOrNull()
+
             clearSession(
+                completedReport = buildProcessingCompletedBroadcastReport(seed = seededReport),
+            )
+
+            val completedReport = buildCompletedReport(
+                broadcastId = broadcastId,
+                seed = seededReport,
+            )
+            val deleteFailure = deleteBroadcastUseCase(broadcastId).exceptionOrNull()
+            updateCompletedReportAfterAnalysis(
+                report = completedReport,
                 error = mergeErrorMessages(
-                    primary = stopFailure?.message,
+                    primary = null,
                     secondary = deleteFailure?.message,
                 ),
-                srtState = if (stopFailure != null || deleteFailure != null) {
+                srtState = if (deleteFailure != null) {
                     SrtConnectionState.ERROR
                 } else {
                     SrtConnectionState.DISCONNECTED
                 },
-                completedReport = completedReport,
             )
         }
     }
@@ -365,6 +386,20 @@ class BroadcastCameraViewModel @Inject constructor(
         }
     }
 
+    private fun updateCompletedReportAfterAnalysis(
+        report: CompletedBroadcastReport,
+        error: String? = null,
+        srtState: SrtConnectionState = SrtConnectionState.DISCONNECTED,
+    ) {
+        _uiState.update { current ->
+            current.copy(
+                error = error,
+                srtState = srtState,
+                completedReport = current.completedReport?.let { report },
+            )
+        }
+    }
+
     private fun buildAutoBroadcastTitle(): String {
         return "포커스방송"
     }
@@ -385,9 +420,9 @@ class BroadcastCameraViewModel @Inject constructor(
         broadcastId: String,
         seed: CompletedBroadcastReportSeed,
     ): CompletedBroadcastReport {
-        val localReport = buildLocalCompletedBroadcastReport(
+        val localReport = buildProcessingCompletedBroadcastReport(
             seed = seed,
-            analysisStatus = com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus.PROCESSING,
+            analysisStatus = BroadcastAnalysisStatus.PROCESSING,
         )
 
         val createdJob = createBroadcastAnalysisJobUseCase(
@@ -395,7 +430,8 @@ class BroadcastCameraViewModel @Inject constructor(
             request = localReport.toCreateAnalysisJobRequest(seed),
         ).getOrElse {
             return localReport.copy(
-                analysisStatus = com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus.FAILED,
+                analysisStatus = BroadcastAnalysisStatus.FAILED,
+                analysisErrorMessage = it.message,
             )
         }
 
@@ -404,13 +440,7 @@ class BroadcastCameraViewModel @Inject constructor(
             analysisStatus = createdJob.jobStatus,
         )
 
-        val completedJob = completeBroadcastAnalysisJobUseCase(
-            broadcastId = broadcastId,
-            analysisJobId = createdJob.analysisJobId,
-            request = seededReport.toCompleteAnalysisJobRequest(seed),
-        ).getOrNull()
-
-        val latestAnalysis = getLatestBroadcastAnalysisUseCase(broadcastId).getOrNull()
+        val latestAnalysis = awaitLatestAnalysisResult(broadcastId)
         val highlightMoments = getBroadcastHighlightsUseCase(broadcastId)
             .getOrDefault(emptyList())
             .map { it.toCompletedHighlightMoment() }
@@ -420,12 +450,43 @@ class BroadcastCameraViewModel @Inject constructor(
         }
 
         return seededReport.copy(
-            analysisStatus = completedJob?.jobStatus ?: com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus.FAILED,
-            completedAtMillis = completedJob?.completedAt?.let(::parseAnalysisEpochMillis)
+            analysisStatus = if (createdJob.jobStatus == BroadcastAnalysisStatus.FAILED) {
+                BroadcastAnalysisStatus.FAILED
+            } else {
+                BroadcastAnalysisStatus.PROCESSING
+            },
+            analysisErrorMessage = createdJob.errorMessage,
+            completedAtMillis = createdJob.completedAt?.let(::parseAnalysisEpochMillis)
                 ?: seed.completedAtMillis,
             highlightCount = maxOf(seededReport.highlightCount, highlightMoments.size),
             highlightMoments = highlightMoments,
         )
+    }
+
+    private suspend fun awaitLatestAnalysisResult(
+        broadcastId: String,
+    ): BroadcastAnalysisResult? {
+        var lastKnownResult: BroadcastAnalysisResult? = null
+        repeat(ANALYSIS_MAX_POLL_ATTEMPTS) { attempt ->
+            val latest = getLatestBroadcastAnalysisUseCase(broadcastId).getOrNull()
+            if (latest != null) {
+                lastKnownResult = latest
+                val jobStatus = latest.latestJob?.jobStatus
+                if (jobStatus == BroadcastAnalysisStatus.FAILED) {
+                    return latest
+                }
+                if (jobStatus == BroadcastAnalysisStatus.SUCCEEDED && latest.isPresentableFinalReport()) {
+                    return latest
+                }
+            }
+
+            if (attempt < ANALYSIS_MAX_POLL_ATTEMPTS - 1) {
+                delay(ANALYSIS_POLL_INTERVAL_MS)
+            }
+        }
+        return lastKnownResult?.takeIf {
+            it.latestJob?.jobStatus == BroadcastAnalysisStatus.FAILED || it.isPresentableFinalReport()
+        }
     }
 
     private fun parseAnalysisEpochMillis(raw: String): Long? {
