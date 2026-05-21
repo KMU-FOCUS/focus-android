@@ -7,6 +7,7 @@ import android.opengl.GLES30
 import android.opengl.Matrix
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import androidx.annotation.VisibleForTesting
@@ -336,15 +337,17 @@ class VideoRenderer(
             // 3. PBO를 사용해 비동기 픽셀 읽기를 요청하고, 이전 프레임 결과만 분석한다.
             var processedFrame: ProcessedFrame? = null
             var encoderTextureIdForSubmit = 0
+            // analysisBuffer 는 PBO 1 frame 지연으로 "이전 frame" 의 pixel.
+            // 인코더 submit 도 같은 frame 의 텍스처를 사용하므로, metadata/encoder PTS 일치를 위해
+            // 분석/인코더 모두 동일 timestamp(=pendingAnalysisFrameTimestampNs) 를 박아야 한다.
+            val analysisFrameTimestampNs = pendingAnalysisFrameTimestampNs
             val analysisBuffer = pboReader.readPixelsAsync()
             if (analysisBuffer != null && (recordingEnabled || shouldAnalyzeFrame(frameTimestampNs))) {
-                // analysisBuffer 는 PBO 1 frame 지연으로 "이전 frame" 의 pixel.
-                // 그래서 그 frame 의 SurfaceTexture timestamp 를 박아야 인코더 PTS 와 정확히 매칭됨.
                 processedFrame = onFrameCaptured(
                     analysisBuffer,
                     viewWidth,
                     viewHeight,
-                    pendingAnalysisFrameTimestampNs,
+                    analysisFrameTimestampNs,
                 )
                 lastAnalysisTimestampNs = resolveAnalysisTimestampNs(frameTimestampNs)
             }
@@ -404,7 +407,7 @@ class VideoRenderer(
             if (shouldSubmitFrameForRecording(recordingEnabled, processedFrame) && encoderTextureIdForSubmit != 0) {
                 submitFrameToEncoderThread(
                     textureId = encoderTextureIdForSubmit,
-                    frameTimestampNs = frameTimestampNs,
+                    frameTimestampNs = analysisFrameTimestampNs,
                 )
             }
         }
@@ -467,7 +470,10 @@ class VideoRenderer(
             return
         }
 
-        val baseTimestampNs = if (frameTimestampNs > 0L) frameTimestampNs else System.nanoTime()
+        // SurfaceTexture.timestamp 는 elapsedRealtimeNanos 타임라인이므로, fallback 도 동일 clock 사용.
+        // System.nanoTime() 은 CLOCK_MONOTONIC (suspend 제외) 으로 timeline 이 달라 metadata 와 어긋날 수 있음.
+        val baseTimestampNs =
+            if (frameTimestampNs > 0L) frameTimestampNs else SystemClock.elapsedRealtimeNanos()
         val timestampNs = if (lastEncoderTimestampNs == Long.MIN_VALUE) {
             baseTimestampNs
         } else {
