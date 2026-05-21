@@ -7,6 +7,7 @@ import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CreateBroadc
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.PageBroadcastResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.StartBroadcastRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.UpdateBroadcastRequestDto
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastStatus
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -56,7 +57,12 @@ class BroadcastRepositoryImplTest {
         assertEquals(BroadcastStatus.READY, broadcast.status)
         assertEquals("stream-key-abc", broadcast.streamKey)
         coVerify(exactly = 1) {
-            api.createBroadcast(CreateBroadcastRequestDto(title = "테스트 방송"))
+            api.createBroadcast(
+                CreateBroadcastRequestDto(
+                    title = "테스트 방송",
+                    outputMode = BroadcastOutputMode.CHZZK_RTMP.apiValue,
+                ),
+            )
         }
     }
 

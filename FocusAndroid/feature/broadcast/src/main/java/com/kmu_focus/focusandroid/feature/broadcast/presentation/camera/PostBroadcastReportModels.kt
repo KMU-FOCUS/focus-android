@@ -2,12 +2,7 @@ package com.kmu_focus.focusandroid.feature.broadcast.presentation.camera
 
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastContentRatio
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastFaceStatistics
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastHighlightCandidate
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastViewerPeakInsight
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CreateBroadcastAnalysisJob
-import java.io.File
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -34,8 +29,6 @@ data class CompletedBroadcastReportSeed(
     val ownerCount: Int,
     val recordingFilePath: String?,
     val completedAtMillis: Long = System.currentTimeMillis(),
-    val resolutionWidth: Int = 1280,
-    val resolutionHeight: Int = 720,
 )
 
 data class CompletedBroadcastContentRatio(
@@ -104,38 +97,6 @@ internal fun buildProcessingCompletedBroadcastReport(
         contentRatios = emptyList(),
         recordingFilePath = seed.recordingFilePath,
         hasFinalAnalysis = false,
-    )
-}
-
-internal fun CompletedBroadcastReport.toCreateAnalysisJobRequest(
-    seed: CompletedBroadcastReportSeed,
-): CreateBroadcastAnalysisJob {
-    return CreateBroadcastAnalysisJob(
-        assetType = "ANALYSIS_MP4",
-        jobType = "FULL_SUMMARY",
-        storageProvider = "LOCAL_FILE",
-        storageKey = seed.toStorageKey(),
-        storageUrl = seed.recordingFilePath,
-        durationSec = durationSec,
-        resolutionWidth = seed.resolutionWidth,
-        resolutionHeight = seed.resolutionHeight,
-        fileSizeBytes = seed.recordingFilePath.toFileSizeOrNull(),
-        summary = summary.takeIf { it.isNotBlank() },
-        strengths = strengths,
-        weaknesses = weaknesses,
-        actionItems = actionItems,
-        viewerPeakInsight = peakViewerInsightOrNull().takeIf { hasFinalAnalysis },
-        faceStatistics = BroadcastFaceStatistics(
-            totalReplacedFaceCount = replacedFaceCount,
-            maxSimultaneousCrowdCount = maxCrowdCount,
-        ).takeIf { hasFinalAnalysis },
-        contentRatios = contentRatios.map {
-            BroadcastContentRatio(
-                contentType = it.contentType,
-                percentage = it.percentage,
-                durationSec = it.durationSec,
-            )
-        },
     )
 }
 
@@ -239,18 +200,6 @@ internal fun Long.toDateTimeLabel(): String {
     return SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.KOREA).format(Date(this))
 }
 
-private fun CompletedBroadcastReport.peakViewerInsightOrNull(): BroadcastViewerPeakInsight? {
-    if (peakViewerCount <= 0 && peakOccurredAtLabel.isNullOrBlank() && peakSceneDescription.isBlank()) {
-        return null
-    }
-
-    return BroadcastViewerPeakInsight(
-        peakViewerCount = peakViewerCount,
-        occurredAt = null,
-        sceneDescription = peakSceneDescription.takeIf { it.isNotBlank() },
-    )
-}
-
 private fun com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAiReport.looksLikePlaceholderReport(): Boolean {
     val allText = buildList {
         add(summary)
@@ -264,23 +213,6 @@ private fun com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
     }
     val lacksStructuredSignals = contentRatios.isEmpty() && (viewerPeakInsight?.peakViewerCount ?: 0) <= 0
     return containsPlaceholderMarker && lacksStructuredSignals
-}
-
-private fun CompletedBroadcastReportSeed.toStorageKey(): String {
-    val recordingName = recordingFilePath
-        ?.let(::File)
-        ?.name
-        ?.takeIf { it.isNotBlank() }
-        ?: "analysis_${broadcastId}.mp4"
-    return "android/$broadcastId/$recordingName"
-}
-
-private fun String?.toFileSizeOrNull(): Long? {
-    if (this.isNullOrBlank()) {
-        return null
-    }
-    val file = File(this)
-    return file.takeIf { it.exists() }?.length()
 }
 
 private fun String?.toReadableDateTimeLabel(): String? {

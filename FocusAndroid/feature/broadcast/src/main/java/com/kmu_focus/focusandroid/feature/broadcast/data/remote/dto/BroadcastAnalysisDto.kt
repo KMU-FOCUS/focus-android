@@ -1,56 +1,5 @@
 package com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto
 
-data class CreateBroadcastAnalysisJobRequestDto(
-    val assetType: String,
-    val jobType: String,
-    val storageProvider: String,
-    val storageKey: String,
-    val storageUrl: String? = null,
-    val durationSec: Int? = null,
-    val resolutionWidth: Int? = null,
-    val resolutionHeight: Int? = null,
-    val fileSizeBytes: Long? = null,
-    val summary: String? = null,
-    val strengths: List<String>,
-    val weaknesses: List<String>,
-    val actionItems: List<String>,
-    val viewerPeakInsight: ViewerPeakInsightRequestDto? = null,
-    val faceStatistics: FaceStatisticsRequestDto? = null,
-    val contentRatios: List<ContentRatioRequestDto>,
-)
-
-data class CompleteBroadcastAnalysisJobRequestDto(
-    val storageUrl: String? = null,
-    val durationSec: Int? = null,
-    val resolutionWidth: Int? = null,
-    val resolutionHeight: Int? = null,
-    val fileSizeBytes: Long? = null,
-    val summary: String? = null,
-    val strengths: List<String>,
-    val weaknesses: List<String>,
-    val actionItems: List<String>,
-    val viewerPeakInsight: ViewerPeakInsightRequestDto? = null,
-    val faceStatistics: FaceStatisticsRequestDto? = null,
-    val contentRatios: List<ContentRatioRequestDto>,
-)
-
-data class ViewerPeakInsightRequestDto(
-    val peakViewerCount: Int,
-    val occurredAt: String? = null,
-    val sceneDescription: String? = null,
-)
-
-data class FaceStatisticsRequestDto(
-    val totalReplacedFaceCount: Int,
-    val maxSimultaneousCrowdCount: Int,
-)
-
-data class ContentRatioRequestDto(
-    val contentType: String,
-    val percentage: Double,
-    val durationSec: Int,
-)
-
 data class BroadcastAnalysisJobResponseDto(
     val analysisJobId: String,
     val broadcastId: String,

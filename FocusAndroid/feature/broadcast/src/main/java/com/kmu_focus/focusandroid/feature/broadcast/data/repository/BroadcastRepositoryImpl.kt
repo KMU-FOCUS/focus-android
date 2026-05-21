@@ -1,10 +1,8 @@
 package com.kmu_focus.focusandroid.feature.broadcast.data.repository
 
 import com.kmu_focus.focusandroid.core.network.dto.ApiResponse
-import com.kmu_focus.focusandroid.feature.broadcast.data.mapper.toDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.mapper.toEntity
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.BroadcastApi
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastAnalysisJobResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastAnalysisResultResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastHighlightCandidateResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastResponseDto
@@ -12,13 +10,10 @@ import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CreateBroadc
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.PageBroadcastResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.StartBroadcastRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.UpdateBroadcastRequestDto
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisJob
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastHighlightCandidate
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CompleteBroadcastAnalysisJob
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CreateBroadcastAnalysisJob
 import com.kmu_focus.focusandroid.feature.broadcast.domain.repository.BroadcastRepository
 import javax.inject.Inject
 import retrofit2.Response
@@ -123,42 +118,6 @@ class BroadcastRepositoryImpl @Inject constructor(
         return executeUnit(
             apiCall = { broadcastApi.streamerHeartbeat(broadcastId) },
             failureMessage = "스트리머 하트비트 전송 실패",
-        )
-    }
-
-    override suspend fun createAnalysisJob(
-        broadcastId: String,
-        request: CreateBroadcastAnalysisJob,
-    ): Result<BroadcastAnalysisJob> {
-        return execute(
-            apiCall = {
-                broadcastApi.createAnalysisJob(
-                    broadcastId = broadcastId,
-                    request = request.toDto(),
-                )
-            },
-            successMapper = BroadcastAnalysisJobResponseDto::toEntity,
-            emptyDataMessage = "분석 작업 생성 결과가 비어 있습니다",
-            failureMessage = "분석 작업 생성 실패",
-        )
-    }
-
-    override suspend fun completeAnalysisJob(
-        broadcastId: String,
-        analysisJobId: String,
-        request: CompleteBroadcastAnalysisJob,
-    ): Result<BroadcastAnalysisJob> {
-        return execute(
-            apiCall = {
-                broadcastApi.completeAnalysisJob(
-                    broadcastId = broadcastId,
-                    analysisJobId = analysisJobId,
-                    request = request.toDto(),
-                )
-            },
-            successMapper = BroadcastAnalysisJobResponseDto::toEntity,
-            emptyDataMessage = "분석 작업 완료 결과가 비어 있습니다",
-            failureMessage = "분석 작업 완료 실패",
         )
     }
 

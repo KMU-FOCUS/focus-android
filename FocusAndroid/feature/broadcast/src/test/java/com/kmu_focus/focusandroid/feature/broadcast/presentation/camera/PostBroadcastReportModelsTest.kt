@@ -8,7 +8,6 @@ import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastFaceS
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastMediaAsset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -68,27 +67,6 @@ class PostBroadcastReportModelsTest {
         assertTrue(report.actionItems.isEmpty())
         assertEquals(3, report.highlightCount)
         assertEquals(1, report.highlightMoments.size)
-    }
-
-    @Test
-    fun `processing report는 초기 분석 생성 요청에 더미 결과를 넣지 않는다`() {
-        val seed = CompletedBroadcastReportSeed(
-            broadcastId = "broadcast-1",
-            durationSec = 60,
-            ownerCount = 1,
-            recordingFilePath = null,
-        )
-
-        val request = buildProcessingCompletedBroadcastReport(seed)
-            .toCreateAnalysisJobRequest(seed)
-
-        assertNull(request.summary)
-        assertTrue(request.strengths.isEmpty())
-        assertTrue(request.weaknesses.isEmpty())
-        assertTrue(request.actionItems.isEmpty())
-        assertNull(request.viewerPeakInsight)
-        assertNull(request.faceStatistics)
-        assertTrue(request.contentRatios.isEmpty())
     }
 
     @Test

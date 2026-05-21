@@ -1,12 +1,9 @@
 package com.kmu_focus.focusandroid.feature.broadcast.data.remote
 
 import com.kmu_focus.focusandroid.core.network.dto.ApiResponse
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastAnalysisJobResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastAnalysisResultResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastHighlightCandidateResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastResponseDto
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CompleteBroadcastAnalysisJobRequestDto
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CreateBroadcastAnalysisJobRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CreateBroadcastRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.PageBroadcastResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.StartBroadcastRequestDto
@@ -71,19 +68,6 @@ interface BroadcastApi {
     suspend fun viewerHeartbeat(
         @Path("broadcastId") broadcastId: String,
     ): Response<ApiResponse<Unit>>
-
-    @POST("/api/v1/broadcasts/{broadcastId}/analysis-jobs")
-    suspend fun createAnalysisJob(
-        @Path("broadcastId") broadcastId: String,
-        @Body request: CreateBroadcastAnalysisJobRequestDto,
-    ): Response<ApiResponse<BroadcastAnalysisJobResponseDto>>
-
-    @POST("/api/v1/broadcasts/{broadcastId}/analysis-jobs/{analysisJobId}/complete")
-    suspend fun completeAnalysisJob(
-        @Path("broadcastId") broadcastId: String,
-        @Path("analysisJobId") analysisJobId: String,
-        @Body request: CompleteBroadcastAnalysisJobRequestDto,
-    ): Response<ApiResponse<BroadcastAnalysisJobResponseDto>>
 
     @GET("/api/v1/broadcasts/{broadcastId}/analysis")
     suspend fun getLatestAnalysis(

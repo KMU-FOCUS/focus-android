@@ -77,37 +77,3 @@ data class BroadcastHighlightCandidate(
     val score: Double,
     val createdAt: String,
 )
-
-data class CreateBroadcastAnalysisJob(
-    val assetType: String,
-    val jobType: String,
-    val storageProvider: String,
-    val storageKey: String,
-    val storageUrl: String? = null,
-    val durationSec: Int? = null,
-    val resolutionWidth: Int? = null,
-    val resolutionHeight: Int? = null,
-    val fileSizeBytes: Long? = null,
-    val summary: String? = null,
-    val strengths: List<String>,
-    val weaknesses: List<String>,
-    val actionItems: List<String>,
-    val viewerPeakInsight: BroadcastViewerPeakInsight? = null,
-    val faceStatistics: BroadcastFaceStatistics? = null,
-    val contentRatios: List<BroadcastContentRatio>,
-)
-
-data class CompleteBroadcastAnalysisJob(
-    val storageUrl: String? = null,
-    val durationSec: Int? = null,
-    val resolutionWidth: Int? = null,
-    val resolutionHeight: Int? = null,
-    val fileSizeBytes: Long? = null,
-    val summary: String? = null,
-    val strengths: List<String>,
-    val weaknesses: List<String>,
-    val actionItems: List<String>,
-    val viewerPeakInsight: BroadcastViewerPeakInsight? = null,
-    val faceStatistics: BroadcastFaceStatistics? = null,
-    val contentRatios: List<BroadcastContentRatio>,
-)

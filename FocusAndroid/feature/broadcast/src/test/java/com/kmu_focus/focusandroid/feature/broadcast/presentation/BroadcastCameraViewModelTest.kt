@@ -13,7 +13,6 @@ import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastConte
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastStatus
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.BroadcastStreamingUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
-import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.DeleteBroadcastUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.GetBroadcastHighlightsUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.GetLatestBroadcastAnalysisUseCase
@@ -44,7 +43,6 @@ class BroadcastCameraViewModelTest {
     private lateinit var createBroadcastUseCase: CreateBroadcastUseCase
     private lateinit var deleteBroadcastUseCase: DeleteBroadcastUseCase
     private lateinit var broadcastStreamingUseCase: BroadcastStreamingUseCase
-    private lateinit var createBroadcastAnalysisJobUseCase: CreateBroadcastAnalysisJobUseCase
     private lateinit var getLatestBroadcastAnalysisUseCase: GetLatestBroadcastAnalysisUseCase
     private lateinit var getBroadcastHighlightsUseCase: GetBroadcastHighlightsUseCase
     private lateinit var viewModel: BroadcastCameraViewModel
@@ -116,7 +114,6 @@ class BroadcastCameraViewModelTest {
         createBroadcastUseCase = mockk()
         deleteBroadcastUseCase = mockk()
         broadcastStreamingUseCase = mockk(relaxed = true)
-        createBroadcastAnalysisJobUseCase = mockk()
         getLatestBroadcastAnalysisUseCase = mockk()
         getBroadcastHighlightsUseCase = mockk()
     }
@@ -131,7 +128,6 @@ class BroadcastCameraViewModelTest {
             createBroadcastUseCase = createBroadcastUseCase,
             deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
-            createBroadcastAnalysisJobUseCase = createBroadcastAnalysisJobUseCase,
             getLatestBroadcastAnalysisUseCase = getLatestBroadcastAnalysisUseCase,
             getBroadcastHighlightsUseCase = getBroadcastHighlightsUseCase,
             savedStateHandle = SavedStateHandle(),
@@ -218,7 +214,6 @@ class BroadcastCameraViewModelTest {
         every { broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any()) } returns Job()
         coEvery { broadcastStreamingUseCase.stopBroadcast("broadcast-1") } returns Result.success(Unit)
         coEvery { deleteBroadcastUseCase.invoke("broadcast-1") } returns Result.success(Unit)
-        coEvery { createBroadcastAnalysisJobUseCase.invoke(any(), any()) } returns Result.success(sampleAnalysisJob)
         coEvery { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") } returns Result.success(sampleAnalysisResult)
         coEvery { getBroadcastHighlightsUseCase.invoke("broadcast-1") } returns Result.success(emptyList())
 

@@ -1,12 +1,9 @@
 package com.kmu_focus.focusandroid.feature.broadcast.domain.repository
 
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisJob
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastHighlightCandidate
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CompleteBroadcastAnalysisJob
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CreateBroadcastAnalysisJob
 
 interface BroadcastRepository {
     suspend fun createBroadcast(
@@ -33,17 +30,6 @@ interface BroadcastRepository {
     suspend fun deleteBroadcast(broadcastId: String): Result<Unit>
 
     suspend fun sendStreamerHeartbeat(broadcastId: String): Result<Unit>
-
-    suspend fun createAnalysisJob(
-        broadcastId: String,
-        request: CreateBroadcastAnalysisJob,
-    ): Result<BroadcastAnalysisJob>
-
-    suspend fun completeAnalysisJob(
-        broadcastId: String,
-        analysisJobId: String,
-        request: CompleteBroadcastAnalysisJob,
-    ): Result<BroadcastAnalysisJob>
 
     suspend fun getLatestAnalysis(broadcastId: String): Result<BroadcastAnalysisResult>
 

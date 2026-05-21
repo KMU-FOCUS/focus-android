@@ -11,7 +11,6 @@ import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnaly
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.BroadcastStreamingUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
-import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.DeleteBroadcastUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.GetBroadcastHighlightsUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.GetLatestBroadcastAnalysisUseCase
@@ -50,7 +49,6 @@ class BroadcastCameraViewModel @Inject constructor(
     private val createBroadcastUseCase: CreateBroadcastUseCase,
     private val deleteBroadcastUseCase: DeleteBroadcastUseCase,
     private val broadcastStreamingUseCase: BroadcastStreamingUseCase,
-    private val createBroadcastAnalysisJobUseCase: CreateBroadcastAnalysisJobUseCase,
     private val getLatestBroadcastAnalysisUseCase: GetLatestBroadcastAnalysisUseCase,
     private val getBroadcastHighlightsUseCase: GetBroadcastHighlightsUseCase,
     private val savedStateHandle: SavedStateHandle,
@@ -420,24 +418,9 @@ class BroadcastCameraViewModel @Inject constructor(
         broadcastId: String,
         seed: CompletedBroadcastReportSeed,
     ): CompletedBroadcastReport {
-        val localReport = buildProcessingCompletedBroadcastReport(
+        val processingReport = buildProcessingCompletedBroadcastReport(
             seed = seed,
             analysisStatus = BroadcastAnalysisStatus.PROCESSING,
-        )
-
-        val createdJob = createBroadcastAnalysisJobUseCase(
-            broadcastId = broadcastId,
-            request = localReport.toCreateAnalysisJobRequest(seed),
-        ).getOrElse {
-            return localReport.copy(
-                analysisStatus = BroadcastAnalysisStatus.FAILED,
-                analysisErrorMessage = it.message,
-            )
-        }
-
-        val seededReport = localReport.copy(
-            analysisJobId = createdJob.analysisJobId,
-            analysisStatus = createdJob.jobStatus,
         )
 
         val latestAnalysis = awaitLatestAnalysisResult(broadcastId)
@@ -449,16 +432,8 @@ class BroadcastCameraViewModel @Inject constructor(
             return latestAnalysis.toCompletedBroadcastReport(seed, highlightMoments)
         }
 
-        return seededReport.copy(
-            analysisStatus = if (createdJob.jobStatus == BroadcastAnalysisStatus.FAILED) {
-                BroadcastAnalysisStatus.FAILED
-            } else {
-                BroadcastAnalysisStatus.PROCESSING
-            },
-            analysisErrorMessage = createdJob.errorMessage,
-            completedAtMillis = createdJob.completedAt?.let(::parseAnalysisEpochMillis)
-                ?: seed.completedAtMillis,
-            highlightCount = maxOf(seededReport.highlightCount, highlightMoments.size),
+        return processingReport.copy(
+            highlightCount = maxOf(processingReport.highlightCount, highlightMoments.size),
             highlightMoments = highlightMoments,
         )
     }
@@ -487,17 +462,6 @@ class BroadcastCameraViewModel @Inject constructor(
         return lastKnownResult?.takeIf {
             it.latestJob?.jobStatus == BroadcastAnalysisStatus.FAILED || it.isPresentableFinalReport()
         }
-    }
-
-    private fun parseAnalysisEpochMillis(raw: String): Long? {
-        return runCatching {
-            java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli()
-        }.recoverCatching {
-            java.time.LocalDateTime.parse(raw, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                .atZone(java.time.ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
-        }.getOrNull()
     }
 
     override fun onCleared() {

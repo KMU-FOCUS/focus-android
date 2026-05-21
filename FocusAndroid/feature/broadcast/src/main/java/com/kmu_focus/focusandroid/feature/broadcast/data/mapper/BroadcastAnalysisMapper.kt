@@ -5,11 +5,6 @@ import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastAna
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastAnalysisResultResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastHighlightCandidateResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastMediaAssetResponseDto
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CompleteBroadcastAnalysisJobRequestDto
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.ContentRatioRequestDto
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CreateBroadcastAnalysisJobRequestDto
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.FaceStatisticsRequestDto
-import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.ViewerPeakInsightRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAiReport
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisJob
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
@@ -19,46 +14,6 @@ import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastFaceS
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastHighlightCandidate
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastMediaAsset
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastViewerPeakInsight
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CompleteBroadcastAnalysisJob
-import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CreateBroadcastAnalysisJob
-
-fun CreateBroadcastAnalysisJob.toDto(): CreateBroadcastAnalysisJobRequestDto {
-    return CreateBroadcastAnalysisJobRequestDto(
-        assetType = assetType,
-        jobType = jobType,
-        storageProvider = storageProvider,
-        storageKey = storageKey,
-        storageUrl = storageUrl,
-        durationSec = durationSec,
-        resolutionWidth = resolutionWidth,
-        resolutionHeight = resolutionHeight,
-        fileSizeBytes = fileSizeBytes,
-        summary = summary,
-        strengths = strengths,
-        weaknesses = weaknesses,
-        actionItems = actionItems,
-        viewerPeakInsight = viewerPeakInsight?.toRequestDto(),
-        faceStatistics = faceStatistics?.toRequestDto(),
-        contentRatios = contentRatios.map(BroadcastContentRatio::toRequestDto),
-    )
-}
-
-fun CompleteBroadcastAnalysisJob.toDto(): CompleteBroadcastAnalysisJobRequestDto {
-    return CompleteBroadcastAnalysisJobRequestDto(
-        storageUrl = storageUrl,
-        durationSec = durationSec,
-        resolutionWidth = resolutionWidth,
-        resolutionHeight = resolutionHeight,
-        fileSizeBytes = fileSizeBytes,
-        summary = summary,
-        strengths = strengths,
-        weaknesses = weaknesses,
-        actionItems = actionItems,
-        viewerPeakInsight = viewerPeakInsight?.toRequestDto(),
-        faceStatistics = faceStatistics?.toRequestDto(),
-        contentRatios = contentRatios.map(BroadcastContentRatio::toRequestDto),
-    )
-}
 
 fun BroadcastAnalysisJobResponseDto.toEntity(): BroadcastAnalysisJob {
     return BroadcastAnalysisJob(
@@ -131,29 +86,6 @@ private fun BroadcastMediaAssetResponseDto.toEntity(): BroadcastMediaAsset {
         resolutionHeight = resolutionHeight,
         fileSizeBytes = fileSizeBytes,
         createdAt = createdAt,
-    )
-}
-
-private fun BroadcastViewerPeakInsight.toRequestDto(): ViewerPeakInsightRequestDto {
-    return ViewerPeakInsightRequestDto(
-        peakViewerCount = peakViewerCount,
-        occurredAt = occurredAt,
-        sceneDescription = sceneDescription,
-    )
-}
-
-private fun BroadcastFaceStatistics.toRequestDto(): FaceStatisticsRequestDto {
-    return FaceStatisticsRequestDto(
-        totalReplacedFaceCount = totalReplacedFaceCount,
-        maxSimultaneousCrowdCount = maxSimultaneousCrowdCount,
-    )
-}
-
-private fun BroadcastContentRatio.toRequestDto(): ContentRatioRequestDto {
-    return ContentRatioRequestDto(
-        contentType = contentType,
-        percentage = percentage,
-        durationSec = durationSec,
     )
 }
 
