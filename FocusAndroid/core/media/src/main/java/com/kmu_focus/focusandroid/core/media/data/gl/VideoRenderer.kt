@@ -372,7 +372,7 @@ class VideoRenderer(
                 GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, encoderFboIds[encoderFboWriteIndex])
                 GLES30.glViewport(0, 0, viewWidth, viewHeight)
                 GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
-                program.draw2DBlend(analysisPreviewTextureId)
+                program.draw2DNoFlip(analysisPreviewTextureId)
                 if (privacyMode != PrivacyMode.Original) {
                     val ellipses = stabilizePrivacyEllipses(
                         previousEllipses = previousPrivacyEllipses,

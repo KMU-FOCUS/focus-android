@@ -138,6 +138,28 @@ class OESTextureProgram {
         GLES30.glBindVertexArray(0)
     }
 
+    // 이미 Y 반전이 적용된 FBO 텍스처를 다시 뒤집지 않고 그대로 복사한다 (blend 없음).
+    // OES → previewFbo 단계에서 한 번 뒤집힌 텍스처를 EncoderThread.draw2D 가 마지막에 다시 뒤집어
+    // 인코더 surface 에 정방향으로 들어가도록, 중간 인코더 FBO 는 뒤집힘 상태를 유지해야 한다.
+    // draw2DBlend 는 SRC_ALPHA 블렌딩이 켜져 있어 OES 텍스처 알파가 1.0 미만인 디바이스에서
+    // 검은 배경과 섞여 색이 빠지는 문제가 있으므로, 알파 블렌딩이 필요 없는 경로는 이 메서드를 쓴다.
+    fun draw2DNoFlip(textureId: Int) {
+        GLES30.glDisable(GLES30.GL_BLEND)
+        GLES30.glUseProgram(twoDProgramId)
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textureId)
+        GLES30.glUniform1i(twoDTextureLoc, 0)
+        GLES30.glUniform1f(twoDFlipYLoc, 0.0f)
+        GLES30.glUniform1f(twoDContentScaleXLoc, 1.0f)
+        GLES30.glUniform1f(twoDContentScaleYLoc, 1.0f)
+
+        GLES30.glUniformMatrix4fv(twoDTexMatrixLoc, 1, false, identityMatrix, 0)
+
+        GLES30.glBindVertexArray(vaoId)
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
+        GLES30.glBindVertexArray(0)
+    }
+
     // Canvas로 그린 오버레이 텍스처를 알파 블렌딩으로 위에 합성 (Y 반전 없음)
     fun draw2DBlend(textureId: Int) {
         GLES30.glEnable(GLES30.GL_BLEND)

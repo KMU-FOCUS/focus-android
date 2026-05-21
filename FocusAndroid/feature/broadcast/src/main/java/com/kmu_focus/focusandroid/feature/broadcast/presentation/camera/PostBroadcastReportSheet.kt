@@ -7,33 +7,40 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPalette
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPrimaryButton
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
@@ -46,6 +53,7 @@ internal fun PostBroadcastReportSheet(
 ) {
     var showDetail by remember { mutableStateOf(false) }
     val shouldShowFinalAnalysis = report.hasFinalAnalysis && report.analysisStatus == BroadcastAnalysisStatus.SUCCEEDED
+    val scrimColor = Color.Black.copy(alpha = 0.58f)
 
     Dialog(
         onDismissRequest = {},
@@ -55,18 +63,19 @@ internal fun PostBroadcastReportSheet(
             usePlatformDefaultWidth = false,
         ),
     ) {
+        ReportDialogSystemBars(scrimColor = scrimColor)
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.36f))
-                .statusBarsPadding()
-                .padding(horizontal = 10.dp, vertical = 12.dp),
+                .background(scrimColor),
             contentAlignment = Alignment.BottomCenter,
         ) {
             Surface(
                 modifier = Modifier
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
                     .fillMaxWidth()
-                    .fillMaxHeight(0.86f),
+                    .fillMaxHeight(),
                 color = Color(0xFFF6FBFE),
                 shape = RoundedCornerShape(32.dp),
                 border = BorderStroke(1.dp, FocusIosPalette.Border.copy(alpha = 0.55f)),
@@ -143,6 +152,39 @@ internal fun PostBroadcastReportSheet(
                     )
                 }
             }
+        }
+    }
+}
+
+@Suppress("DEPRECATION")
+@Composable
+private fun ReportDialogSystemBars(scrimColor: Color) {
+    val view = LocalView.current
+    val window = (view.parent as? DialogWindowProvider)?.window ?: return
+
+    DisposableEffect(window, scrimColor) {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        val previousStatusBarColor = window.statusBarColor
+        val previousNavigationBarColor = window.navigationBarColor
+        val previousSystemBarsBehavior = controller.systemBarsBehavior
+        val previousLightStatusBars = controller.isAppearanceLightStatusBars
+        val previousLightNavigationBars = controller.isAppearanceLightNavigationBars
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = scrimColor.toArgb()
+        window.navigationBarColor = scrimColor.toArgb()
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.isAppearanceLightStatusBars = false
+        controller.isAppearanceLightNavigationBars = false
+
+        onDispose {
+            window.statusBarColor = previousStatusBarColor
+            window.navigationBarColor = previousNavigationBarColor
+            controller.systemBarsBehavior = previousSystemBarsBehavior
+            controller.isAppearanceLightStatusBars = previousLightStatusBars
+            controller.isAppearanceLightNavigationBars = previousLightNavigationBars
+            WindowCompat.setDecorFitsSystemWindows(window, true)
         }
     }
 }
