@@ -16,6 +16,7 @@ import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnaly
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastHighlightCandidate
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CompleteBroadcastAnalysisJob
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CreateBroadcastAnalysisJob
 import com.kmu_focus.focusandroid.feature.broadcast.domain.repository.BroadcastRepository
@@ -26,11 +27,17 @@ class BroadcastRepositoryImpl @Inject constructor(
     private val broadcastApi: BroadcastApi,
 ) : BroadcastRepository {
 
-    override suspend fun createBroadcast(title: String): Result<Broadcast> {
+    override suspend fun createBroadcast(
+        title: String,
+        outputMode: BroadcastOutputMode,
+    ): Result<Broadcast> {
         return execute(
             apiCall = {
                 broadcastApi.createBroadcast(
-                    CreateBroadcastRequestDto(title = title),
+                    CreateBroadcastRequestDto(
+                        title = title,
+                        outputMode = outputMode.apiValue,
+                    ),
                 )
             },
             successMapper = BroadcastResponseDto::toEntity,

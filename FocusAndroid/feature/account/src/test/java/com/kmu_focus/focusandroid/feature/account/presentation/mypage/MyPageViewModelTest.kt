@@ -2,10 +2,14 @@ package com.kmu_focus.focusandroid.feature.account.presentation.mypage
 
 import com.kmu_focus.focusandroid.feature.account.domain.entity.ChzzkConnectionStatus
 import com.kmu_focus.focusandroid.feature.account.domain.entity.UserProfile
+import com.kmu_focus.focusandroid.feature.account.domain.entity.YoutubeConnectionStatus
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.DisconnectChzzkUseCase
+import com.kmu_focus.focusandroid.feature.account.domain.usecase.DisconnectYoutubeUseCase
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetCurrentUserUseCase
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetChzzkConnectUrlUseCase
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetChzzkConnectionStatusUseCase
+import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetYoutubeConnectUrlUseCase
+import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetYoutubeConnectionStatusUseCase
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.LogoutUseCase
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -30,6 +34,9 @@ class MyPageViewModelTest {
     private lateinit var getChzzkConnectionStatusUseCase: GetChzzkConnectionStatusUseCase
     private lateinit var getChzzkConnectUrlUseCase: GetChzzkConnectUrlUseCase
     private lateinit var disconnectChzzkUseCase: DisconnectChzzkUseCase
+    private lateinit var getYoutubeConnectionStatusUseCase: GetYoutubeConnectionStatusUseCase
+    private lateinit var getYoutubeConnectUrlUseCase: GetYoutubeConnectUrlUseCase
+    private lateinit var disconnectYoutubeUseCase: DisconnectYoutubeUseCase
     private lateinit var logoutUseCase: LogoutUseCase
     private lateinit var viewModel: MyPageViewModel
 
@@ -42,7 +49,11 @@ class MyPageViewModelTest {
         getChzzkConnectionStatusUseCase = mockk()
         getChzzkConnectUrlUseCase = mockk()
         disconnectChzzkUseCase = mockk()
+        getYoutubeConnectionStatusUseCase = mockk()
+        getYoutubeConnectUrlUseCase = mockk()
+        disconnectYoutubeUseCase = mockk()
         logoutUseCase = mockk()
+        stubYoutubeDefaults()
     }
 
     @After
@@ -67,20 +78,16 @@ class MyPageViewModelTest {
         coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
         coEvery { logoutUseCase() } returns Result.success(Unit)
 
-        viewModel = MyPageViewModel(
-            getCurrentUserUseCase,
-            getChzzkConnectionStatusUseCase,
-            getChzzkConnectUrlUseCase,
-            disconnectChzzkUseCase,
-            logoutUseCase,
-        )
+        viewModel = createViewModel()
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
         assertEquals("홍길동", state.profile?.name)
         assertEquals("user@example.com", state.profile?.email)
         assertFalse(state.isChzzkLoading)
+        assertFalse(state.isYoutubeLoading)
         assertFalse(state.chzzkStatus?.connected ?: true)
+        assertFalse(state.youtubeStatus?.connected ?: true)
         assertNull(state.error)
     }
 
@@ -94,13 +101,7 @@ class MyPageViewModelTest {
         coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
         coEvery { logoutUseCase() } returns Result.success(Unit)
 
-        viewModel = MyPageViewModel(
-            getCurrentUserUseCase,
-            getChzzkConnectionStatusUseCase,
-            getChzzkConnectUrlUseCase,
-            disconnectChzzkUseCase,
-            logoutUseCase,
-        )
+        viewModel = createViewModel()
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
@@ -125,13 +126,7 @@ class MyPageViewModelTest {
         coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
         coEvery { logoutUseCase() } returns Result.success(Unit)
 
-        viewModel = MyPageViewModel(
-            getCurrentUserUseCase,
-            getChzzkConnectionStatusUseCase,
-            getChzzkConnectUrlUseCase,
-            disconnectChzzkUseCase,
-            logoutUseCase,
-        )
+        viewModel = createViewModel()
         viewModel.logout()
 
         val state = viewModel.uiState.value
@@ -157,13 +152,7 @@ class MyPageViewModelTest {
         coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
         coEvery { logoutUseCase() } returns Result.failure(RuntimeException("로그아웃 실패"))
 
-        viewModel = MyPageViewModel(
-            getCurrentUserUseCase,
-            getChzzkConnectionStatusUseCase,
-            getChzzkConnectUrlUseCase,
-            disconnectChzzkUseCase,
-            logoutUseCase,
-        )
+        viewModel = createViewModel()
         viewModel.logout()
 
         val state = viewModel.uiState.value
@@ -194,13 +183,7 @@ class MyPageViewModelTest {
         coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
         coEvery { logoutUseCase() } returns Result.success(Unit)
 
-        viewModel = MyPageViewModel(
-            getCurrentUserUseCase,
-            getChzzkConnectionStatusUseCase,
-            getChzzkConnectUrlUseCase,
-            disconnectChzzkUseCase,
-            logoutUseCase,
-        )
+        viewModel = createViewModel()
 
         val state = viewModel.uiState.value
         assertFalse(state.isChzzkLoading)
@@ -225,13 +208,7 @@ class MyPageViewModelTest {
         coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
         coEvery { logoutUseCase() } returns Result.success(Unit)
 
-        viewModel = MyPageViewModel(
-            getCurrentUserUseCase,
-            getChzzkConnectionStatusUseCase,
-            getChzzkConnectUrlUseCase,
-            disconnectChzzkUseCase,
-            logoutUseCase,
-        )
+        viewModel = createViewModel()
         viewModel.startChzzkConnect()
 
         assertEquals("https://auth.example.com/chzzk", viewModel.uiState.value.pendingExternalUrl)
@@ -265,13 +242,7 @@ class MyPageViewModelTest {
         coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
         coEvery { logoutUseCase() } returns Result.success(Unit)
 
-        viewModel = MyPageViewModel(
-            getCurrentUserUseCase,
-            getChzzkConnectionStatusUseCase,
-            getChzzkConnectUrlUseCase,
-            disconnectChzzkUseCase,
-            logoutUseCase,
-        )
+        viewModel = createViewModel()
 
         viewModel.startChzzkConnect()
         assertTrue(viewModel.uiState.value.isAwaitingChzzkConnection)
@@ -307,17 +278,32 @@ class MyPageViewModelTest {
         coEvery { disconnectChzzkUseCase() } returns Result.success(Unit)
         coEvery { logoutUseCase() } returns Result.success(Unit)
 
-        viewModel = MyPageViewModel(
-            getCurrentUserUseCase,
-            getChzzkConnectionStatusUseCase,
-            getChzzkConnectUrlUseCase,
-            disconnectChzzkUseCase,
-            logoutUseCase,
-        )
+        viewModel = createViewModel()
         viewModel.disconnectChzzk()
 
         val state = viewModel.uiState.value
-        assertFalse(state.isChzzkActionInProgress)
+        assertFalse(state.isPlatformActionInProgress)
         assertFalse(state.chzzkStatus?.connected ?: true)
+    }
+
+    private fun createViewModel(): MyPageViewModel {
+        return MyPageViewModel(
+            getCurrentUserUseCase = getCurrentUserUseCase,
+            getChzzkConnectionStatusUseCase = getChzzkConnectionStatusUseCase,
+            getChzzkConnectUrlUseCase = getChzzkConnectUrlUseCase,
+            disconnectChzzkUseCase = disconnectChzzkUseCase,
+            getYoutubeConnectionStatusUseCase = getYoutubeConnectionStatusUseCase,
+            getYoutubeConnectUrlUseCase = getYoutubeConnectUrlUseCase,
+            disconnectYoutubeUseCase = disconnectYoutubeUseCase,
+            logoutUseCase = logoutUseCase,
+        )
+    }
+
+    private fun stubYoutubeDefaults() {
+        coEvery { getYoutubeConnectionStatusUseCase() } returns Result.success(
+            YoutubeConnectionStatus(connected = false),
+        )
+        coEvery { getYoutubeConnectUrlUseCase() } returns Result.success("https://auth.example.com/youtube")
+        coEvery { disconnectYoutubeUseCase() } returns Result.success(Unit)
     }
 }

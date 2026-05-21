@@ -3,6 +3,7 @@ package com.kmu_focus.focusandroid.feature.broadcast.presentation.create
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.StartBroadcastUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -49,7 +50,10 @@ class CreateBroadcastViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            createBroadcastUseCase(title)
+            createBroadcastUseCase(
+                title = title,
+                outputMode = BroadcastOutputMode.CHZZK_RTMP,
+            )
                 .onSuccess { broadcast ->
                     _uiState.update { current ->
                         current.copy(

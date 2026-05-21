@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kmu_focus.focusandroid.feature.account.domain.entity.ChzzkConnectionStatus
 import com.kmu_focus.focusandroid.feature.account.domain.entity.UserProfile
+import com.kmu_focus.focusandroid.feature.account.domain.entity.YoutubeConnectionStatus
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.DisconnectChzzkUseCase
+import com.kmu_focus.focusandroid.feature.account.domain.usecase.DisconnectYoutubeUseCase
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetCurrentUserUseCase
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetChzzkConnectUrlUseCase
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetChzzkConnectionStatusUseCase
+import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetYoutubeConnectUrlUseCase
+import com.kmu_focus.focusandroid.feature.account.domain.usecase.GetYoutubeConnectionStatusUseCase
 import com.kmu_focus.focusandroid.feature.account.domain.usecase.LogoutUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -24,15 +28,19 @@ data class MyPageUiState(
     val isChzzkLoading: Boolean = true,
     val chzzkStatus: ChzzkConnectionStatus? = null,
     val chzzkError: String? = null,
-    val isChzzkActionInProgress: Boolean = false,
+    val isYoutubeLoading: Boolean = true,
+    val youtubeStatus: YoutubeConnectionStatus? = null,
+    val youtubeError: String? = null,
+    val isPlatformActionInProgress: Boolean = false,
     val isAwaitingChzzkConnection: Boolean = false,
+    val isAwaitingYoutubeConnection: Boolean = false,
     val pendingExternalUrl: String? = null,
     val isLoggingOut: Boolean = false,
     val isLoggedOut: Boolean = false,
     val actionError: String? = null,
 ) {
     val error: String?
-        get() = actionError ?: profileError ?: chzzkError
+        get() = actionError ?: profileError ?: chzzkError ?: youtubeError
 }
 
 @HiltViewModel
@@ -41,6 +49,9 @@ class MyPageViewModel @Inject constructor(
     private val getChzzkConnectionStatusUseCase: GetChzzkConnectionStatusUseCase,
     private val getChzzkConnectUrlUseCase: GetChzzkConnectUrlUseCase,
     private val disconnectChzzkUseCase: DisconnectChzzkUseCase,
+    private val getYoutubeConnectionStatusUseCase: GetYoutubeConnectionStatusUseCase,
+    private val getYoutubeConnectUrlUseCase: GetYoutubeConnectUrlUseCase,
+    private val disconnectYoutubeUseCase: DisconnectYoutubeUseCase,
     private val logoutUseCase: LogoutUseCase,
 ) : ViewModel() {
 
@@ -49,7 +60,7 @@ class MyPageViewModel @Inject constructor(
 
     init {
         loadUserProfile()
-        refreshChzzkStatus()
+        refreshPlatformStatuses()
     }
 
     fun loadUserProfile() {
@@ -120,7 +131,12 @@ class MyPageViewModel @Inject constructor(
 
     fun refreshAll() {
         loadUserProfile()
+        refreshPlatformStatuses()
+    }
+
+    fun refreshPlatformStatuses() {
         refreshChzzkStatus()
+        refreshYoutubeStatus()
     }
 
     fun refreshChzzkStatus() {
@@ -155,14 +171,46 @@ class MyPageViewModel @Inject constructor(
         }
     }
 
+    fun refreshYoutubeStatus() {
+        _uiState.update { current ->
+            current.copy(
+                isYoutubeLoading = true,
+                youtubeError = null,
+            )
+        }
+
+        viewModelScope.launch {
+            getYoutubeConnectionStatusUseCase()
+                .onSuccess { status ->
+                    _uiState.update { current ->
+                        current.copy(
+                            isYoutubeLoading = false,
+                            youtubeStatus = status,
+                            youtubeError = null,
+                            isAwaitingYoutubeConnection = current.isAwaitingYoutubeConnection && !status.connected,
+                        )
+                    }
+                }
+                .onFailure { throwable ->
+                    _uiState.update { current ->
+                        current.copy(
+                            isYoutubeLoading = false,
+                            youtubeStatus = null,
+                            youtubeError = throwable.message ?: "유튜브 연동 상태 조회 실패",
+                        )
+                    }
+                }
+        }
+    }
+
     fun startChzzkConnect() {
-        if (_uiState.value.isChzzkActionInProgress) {
+        if (_uiState.value.isPlatformActionInProgress) {
             return
         }
 
         _uiState.update { current ->
             current.copy(
-                isChzzkActionInProgress = true,
+                isPlatformActionInProgress = true,
                 actionError = null,
             )
         }
@@ -172,8 +220,9 @@ class MyPageViewModel @Inject constructor(
                 .onSuccess { url ->
                     _uiState.update { current ->
                         current.copy(
-                            isChzzkActionInProgress = false,
+                            isPlatformActionInProgress = false,
                             isAwaitingChzzkConnection = true,
+                            isAwaitingYoutubeConnection = false,
                             pendingExternalUrl = url,
                             actionError = null,
                         )
@@ -182,10 +231,48 @@ class MyPageViewModel @Inject constructor(
                 .onFailure { throwable ->
                     _uiState.update { current ->
                         current.copy(
-                            isChzzkActionInProgress = false,
+                            isPlatformActionInProgress = false,
                             isAwaitingChzzkConnection = false,
                             pendingExternalUrl = null,
                             actionError = throwable.message ?: "치지직 연동 URL 조회 실패",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun startYoutubeConnect() {
+        if (_uiState.value.isPlatformActionInProgress) {
+            return
+        }
+
+        _uiState.update { current ->
+            current.copy(
+                isPlatformActionInProgress = true,
+                actionError = null,
+            )
+        }
+
+        viewModelScope.launch {
+            getYoutubeConnectUrlUseCase()
+                .onSuccess { url ->
+                    _uiState.update { current ->
+                        current.copy(
+                            isPlatformActionInProgress = false,
+                            isAwaitingYoutubeConnection = true,
+                            isAwaitingChzzkConnection = false,
+                            pendingExternalUrl = url,
+                            actionError = null,
+                        )
+                    }
+                }
+                .onFailure { throwable ->
+                    _uiState.update { current ->
+                        current.copy(
+                            isPlatformActionInProgress = false,
+                            isAwaitingYoutubeConnection = false,
+                            pendingExternalUrl = null,
+                            actionError = throwable.message ?: "유튜브 연동 URL 조회 실패",
                         )
                     }
                 }
@@ -199,13 +286,13 @@ class MyPageViewModel @Inject constructor(
     }
 
     fun disconnectChzzk() {
-        if (_uiState.value.isChzzkActionInProgress) {
+        if (_uiState.value.isPlatformActionInProgress) {
             return
         }
 
         _uiState.update { current ->
             current.copy(
-                isChzzkActionInProgress = true,
+                isPlatformActionInProgress = true,
                 actionError = null,
             )
         }
@@ -216,7 +303,7 @@ class MyPageViewModel @Inject constructor(
                     refreshChzzkStatus()
                     _uiState.update { current ->
                         current.copy(
-                            isChzzkActionInProgress = false,
+                            isPlatformActionInProgress = false,
                             isAwaitingChzzkConnection = false,
                             actionError = null,
                         )
@@ -225,8 +312,43 @@ class MyPageViewModel @Inject constructor(
                 .onFailure { throwable ->
                     _uiState.update { current ->
                         current.copy(
-                            isChzzkActionInProgress = false,
+                            isPlatformActionInProgress = false,
                             actionError = throwable.message ?: "치지직 연동 해제 실패",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun disconnectYoutube() {
+        if (_uiState.value.isPlatformActionInProgress) {
+            return
+        }
+
+        _uiState.update { current ->
+            current.copy(
+                isPlatformActionInProgress = true,
+                actionError = null,
+            )
+        }
+
+        viewModelScope.launch {
+            disconnectYoutubeUseCase()
+                .onSuccess {
+                    refreshYoutubeStatus()
+                    _uiState.update { current ->
+                        current.copy(
+                            isPlatformActionInProgress = false,
+                            isAwaitingYoutubeConnection = false,
+                            actionError = null,
+                        )
+                    }
+                }
+                .onFailure { throwable ->
+                    _uiState.update { current ->
+                        current.copy(
+                            isPlatformActionInProgress = false,
+                            actionError = throwable.message ?: "유튜브 연동 해제 실패",
                         )
                     }
                 }

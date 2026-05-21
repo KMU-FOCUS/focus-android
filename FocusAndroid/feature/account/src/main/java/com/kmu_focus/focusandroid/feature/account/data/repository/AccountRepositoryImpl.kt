@@ -2,10 +2,12 @@ package com.kmu_focus.focusandroid.feature.account.data.repository
 
 import com.kmu_focus.focusandroid.core.network.domain.TokenStore
 import com.kmu_focus.focusandroid.feature.account.data.oauth.ChzzkOAuthConnectUrlValidator
+import com.kmu_focus.focusandroid.feature.account.data.oauth.YoutubeOAuthConnectUrlValidator
 import com.kmu_focus.focusandroid.feature.account.data.remote.AccountApi
 import com.kmu_focus.focusandroid.feature.account.data.remote.dto.toEntity
 import com.kmu_focus.focusandroid.feature.account.domain.entity.ChzzkConnectionStatus
 import com.kmu_focus.focusandroid.feature.account.domain.entity.UserProfile
+import com.kmu_focus.focusandroid.feature.account.domain.entity.YoutubeConnectionStatus
 import com.kmu_focus.focusandroid.feature.account.domain.model.AccountError
 import com.kmu_focus.focusandroid.feature.account.domain.repository.AccountRepository
 import java.io.IOException
@@ -16,6 +18,7 @@ class AccountRepositoryImpl @Inject constructor(
     private val accountApi: AccountApi,
     private val tokenStore: TokenStore,
     private val chzzkOAuthConnectUrlValidator: ChzzkOAuthConnectUrlValidator,
+    private val youtubeOAuthConnectUrlValidator: YoutubeOAuthConnectUrlValidator,
 ) : AccountRepository {
 
     override suspend fun getCurrentUser(): Result<UserProfile> {
@@ -228,6 +231,134 @@ class AccountRepositoryImpl @Inject constructor(
             Result.failure(
                 AccountError.Unexpected(
                     message = throwable.message ?: "치지직 연동 해제 실패",
+                    cause = throwable,
+                )
+            )
+        }
+    }
+
+    override suspend fun getYoutubeConnectionStatus(): Result<YoutubeConnectionStatus> {
+        return try {
+            val response = accountApi.getYoutubeConnectionStatus()
+            val body = response.body()
+            val status = body?.data
+
+            when {
+                response.isSuccessful && body?.success == true && status != null -> {
+                    Result.success(status.toEntity())
+                }
+
+                response.isSuccessful -> {
+                    Result.failure(
+                        AccountError.Network(
+                            body?.message?.takeIf { it.isNotBlank() } ?: "유튜브 연동 상태 조회 실패",
+                        )
+                    )
+                }
+
+                else -> {
+                    Result.failure(
+                        AccountError.Network(
+                            response.extractErrorMessage("유튜브 연동 상태 조회 실패"),
+                        ),
+                    )
+                }
+            }
+        } catch (exception: IOException) {
+            Result.failure(
+                AccountError.Network(
+                    message = exception.message ?: "네트워크 오류",
+                    cause = exception,
+                )
+            )
+        } catch (throwable: Throwable) {
+            Result.failure(
+                AccountError.Unexpected(
+                    message = throwable.message ?: "유튜브 연동 상태 조회 실패",
+                    cause = throwable,
+                )
+            )
+        }
+    }
+
+    override suspend fun getYoutubeConnectUrl(): Result<String> {
+        return try {
+            val response = accountApi.getYoutubeConnectUrl()
+            val body = response.body()
+            val data = body?.data
+
+            when {
+                response.isSuccessful && body?.success == true && data != null && data.authUrl.isNotBlank() -> {
+                    youtubeOAuthConnectUrlValidator.validate(data.authUrl)
+                }
+
+                response.isSuccessful -> {
+                    Result.failure(
+                        AccountError.Network(
+                            body?.message?.takeIf { it.isNotBlank() } ?: "유튜브 연동 URL 조회 실패",
+                        )
+                    )
+                }
+
+                else -> {
+                    Result.failure(
+                        AccountError.Network(
+                            response.extractErrorMessage("유튜브 연동 URL 조회 실패"),
+                        ),
+                    )
+                }
+            }
+        } catch (exception: IOException) {
+            Result.failure(
+                AccountError.Network(
+                    message = exception.message ?: "네트워크 오류",
+                    cause = exception,
+                )
+            )
+        } catch (throwable: Throwable) {
+            Result.failure(
+                AccountError.Unexpected(
+                    message = throwable.message ?: "유튜브 연동 URL 조회 실패",
+                    cause = throwable,
+                )
+            )
+        }
+    }
+
+    override suspend fun disconnectYoutube(): Result<Unit> {
+        return try {
+            val response = accountApi.disconnectYoutube()
+            val body = response.body()
+
+            when {
+                response.isSuccessful && body?.success == true -> Result.success(Unit)
+                response.isSuccessful -> {
+                    Result.failure(
+                        AccountError.Network(
+                            body?.message?.takeIf { it.isNotBlank() } ?: "유튜브 연동 해제 실패",
+                        )
+                    )
+                }
+
+                else -> {
+                    Result.failure(
+                        AccountError.Network(
+                            response.extractErrorMessage("유튜브 연동 해제 실패"),
+                        ),
+                    )
+                }
+            }
+        } catch (exception: IOException) {
+            Result.failure(
+                AccountError.Network(
+                    message = exception.message ?: "네트워크 오류",
+                    cause = exception,
+                )
+            )
+        } catch (throwable: Throwable) {
+            Result.failure(
+                AccountError.Unexpected(
+                    message = throwable.message ?: "유튜브 연동 해제 실패",
                     cause = throwable,
                 )
             )

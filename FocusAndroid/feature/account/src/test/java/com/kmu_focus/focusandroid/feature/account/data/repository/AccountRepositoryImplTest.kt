@@ -4,6 +4,8 @@ import com.kmu_focus.focusandroid.core.network.domain.TokenStore
 import com.kmu_focus.focusandroid.core.network.dto.ApiResponse
 import com.kmu_focus.focusandroid.feature.account.data.oauth.ChzzkOAuthConfig
 import com.kmu_focus.focusandroid.feature.account.data.oauth.ChzzkOAuthConnectUrlValidator
+import com.kmu_focus.focusandroid.feature.account.data.oauth.YoutubeOAuthConfig
+import com.kmu_focus.focusandroid.feature.account.data.oauth.YoutubeOAuthConnectUrlValidator
 import com.kmu_focus.focusandroid.feature.account.data.remote.AccountApi
 import com.kmu_focus.focusandroid.feature.account.data.remote.dto.ChzzkConnectResponseDto
 import com.kmu_focus.focusandroid.feature.account.data.remote.dto.ChzzkConnectionStatusResponseDto
@@ -24,6 +26,7 @@ class AccountRepositoryImplTest {
     private lateinit var accountApi: AccountApi
     private lateinit var tokenStore: TokenStore
     private lateinit var validator: ChzzkOAuthConnectUrlValidator
+    private lateinit var youtubeValidator: YoutubeOAuthConnectUrlValidator
     private lateinit var repository: AccountRepositoryImpl
 
     @Before
@@ -37,7 +40,14 @@ class AccountRepositoryImplTest {
                 authBaseUrl = "https://chzzk.naver.com/account-interlock",
             ),
         )
-        repository = AccountRepositoryImpl(accountApi, tokenStore, validator)
+        youtubeValidator = YoutubeOAuthConnectUrlValidator(
+            config = YoutubeOAuthConfig(
+                clientId = "youtube-client-id",
+                redirectUri = "https://api.focus.ai.kr/api/v1/platforms/youtube/callback",
+                authBaseUrl = "https://accounts.google.com/o/oauth2/v2/auth",
+            ),
+        )
+        repository = AccountRepositoryImpl(accountApi, tokenStore, validator, youtubeValidator)
     }
 
     @Test

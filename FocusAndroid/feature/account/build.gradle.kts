@@ -33,6 +33,24 @@ val chzzkAuthBaseUrl = localProperties
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
+val youtubeClientId = localProperties
+    .getProperty("youtubeClientId", "")
+    .trim()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
+val youtubeRedirectUri = localProperties
+    .getProperty("youtubeRedirectUri", "")
+    .trim()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
+val youtubeAuthBaseUrl = localProperties
+    .getProperty("youtubeAuthBaseUrl", "https://accounts.google.com/o/oauth2/v2/auth")
+    .trim()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
 android {
     namespace = "com.kmu_focus.focusandroid.feature.account"
     compileSdk = 36
@@ -44,6 +62,9 @@ android {
         buildConfigField("String", "CHZZK_CLIENT_ID", "\"$chzzkClientId\"")
         buildConfigField("String", "CHZZK_REDIRECT_URI", "\"$chzzkRedirectUri\"")
         buildConfigField("String", "CHZZK_AUTH_BASE_URL", "\"$chzzkAuthBaseUrl\"")
+        buildConfigField("String", "YOUTUBE_CLIENT_ID", "\"$youtubeClientId\"")
+        buildConfigField("String", "YOUTUBE_REDIRECT_URI", "\"$youtubeRedirectUri\"")
+        buildConfigField("String", "YOUTUBE_AUTH_BASE_URL", "\"$youtubeAuthBaseUrl\"")
     }
 
     compileOptions {

@@ -11,9 +11,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kmu_focus.focusandroid.core.ui.insets.focusContentPadding
 import com.kmu_focus.focusandroid.feature.broadcast.presentation.camera.BroadcastCameraScreen
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.StreamingPlatformConnection
 
 @Composable
 fun MainShellScreen(
+    availableOutputModes: List<BroadcastOutputMode>,
+    platformConnections: List<StreamingPlatformConnection>,
+    isPlatformActionInProgress: Boolean,
+    onConnectPlatform: (BroadcastOutputMode) -> Unit,
+    onDisconnectPlatform: (BroadcastOutputMode) -> Unit,
+    onRefreshPlatforms: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MainShellViewModel = hiltViewModel(),
 ) {
@@ -31,6 +39,12 @@ fun MainShellScreen(
     ) {
         BroadcastCameraScreen(
             modifier = Modifier.fillMaxSize(),
+            availableOutputModes = availableOutputModes,
+            platformConnections = platformConnections,
+            isPlatformActionInProgress = isPlatformActionInProgress,
+            onConnectPlatform = onConnectPlatform,
+            onDisconnectPlatform = onDisconnectPlatform,
+            onRefreshPlatforms = onRefreshPlatforms,
             onRootBack = {
                 activity?.moveTaskToBack(true)
             },

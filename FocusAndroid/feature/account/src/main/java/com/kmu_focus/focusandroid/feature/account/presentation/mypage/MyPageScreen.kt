@@ -31,6 +31,7 @@ import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSectionCard
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosStatusChip
 import com.kmu_focus.focusandroid.feature.account.domain.entity.ChzzkConnectionStatus
+import com.kmu_focus.focusandroid.feature.account.domain.entity.YoutubeConnectionStatus
 
 @Composable
 fun MyPageScreen(
@@ -58,7 +59,7 @@ fun MyPageScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshChzzkStatus()
+                viewModel.refreshPlatformStatuses()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -77,8 +78,8 @@ fun MyPageScreen(
         ) {
             FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
                 FocusIosPanelHeader(
-                    title = "계정 / 치지직 상태",
-                    subtitle = "계정 정보와 치지직 연결 상태를 확인할 수 있어요.",
+                    title = "계정 / 플랫폼 상태",
+                    subtitle = "계정 정보와 플랫폼 연결 상태를 확인할 수 있어요.",
                 )
                 FocusIosSecondaryButton(
                     text = "라이브 홈으로 돌아가기",
@@ -117,35 +118,48 @@ fun MyPageScreen(
                     style = MaterialTheme.typography.titleLarge,
                     color = FocusIosPalette.Text,
                 )
-                when {
-                    uiState.isChzzkLoading -> {
-                        CircularProgressIndicator(color = FocusIosPalette.Primary)
-                        Text(
-                            text = "연동 상태를 확인하는 중입니다.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = FocusIosPalette.TextMuted,
-                        )
-                    }
-
-                    else -> {
-                        ChzzkStatusSection(status = uiState.chzzkStatus)
-                    }
+                if (uiState.isChzzkLoading) {
+                    CircularProgressIndicator(color = FocusIosPalette.Primary)
+                } else {
+                    ChzzkStatusSection(status = uiState.chzzkStatus)
                 }
                 FocusIosPrimaryButton(
-                    text = if (uiState.isChzzkActionInProgress) "연동 처리 중..." else "치지직 연동하기",
+                    text = if (uiState.isPlatformActionInProgress) "연동 처리 중..." else "치지직 연동하기",
                     onClick = viewModel::startChzzkConnect,
-                    enabled = !uiState.isChzzkActionInProgress,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                FocusIosSecondaryButton(
-                    text = "연동 상태 새로고침",
-                    onClick = viewModel::refreshChzzkStatus,
+                    enabled = !uiState.isPlatformActionInProgress,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (uiState.chzzkStatus?.connected == true) {
                     FocusIosSecondaryButton(
                         text = "치지직 연동 해제",
                         onClick = viewModel::disconnectChzzk,
+                        modifier = Modifier.fillMaxWidth(),
+                        accentColor = FocusIosPalette.Warning,
+                    )
+                }
+            }
+
+            FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "유튜브 채널 연동",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = FocusIosPalette.Text,
+                )
+                if (uiState.isYoutubeLoading) {
+                    CircularProgressIndicator(color = FocusIosPalette.Primary)
+                } else {
+                    YoutubeStatusSection(status = uiState.youtubeStatus)
+                }
+                FocusIosPrimaryButton(
+                    text = if (uiState.isPlatformActionInProgress) "연동 처리 중..." else "유튜브 연동하기",
+                    onClick = viewModel::startYoutubeConnect,
+                    enabled = !uiState.isPlatformActionInProgress,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (uiState.youtubeStatus?.connected == true) {
+                    FocusIosSecondaryButton(
+                        text = "유튜브 연동 해제",
+                        onClick = viewModel::disconnectYoutube,
                         modifier = Modifier.fillMaxWidth(),
                         accentColor = FocusIosPalette.Warning,
                     )
@@ -175,6 +189,30 @@ fun MyPageScreen(
                 accentColor = FocusIosPalette.Danger,
             )
         }
+    }
+}
+
+@Composable
+private fun YoutubeStatusSection(
+    status: YoutubeConnectionStatus?,
+) {
+    val connected = status?.connected == true
+    FocusIosStatusChip(
+        text = if (connected) "연동 완료" else "연동 필요",
+        containerColor = if (connected) Color(0xFFE8F6F1) else Color(0xFFFFF3E0),
+        contentColor = if (connected) FocusIosPalette.Secondary else FocusIosPalette.Warning,
+    )
+    Text(
+        text = status?.channelName ?: "연결된 채널이 없습니다.",
+        style = MaterialTheme.typography.bodyLarge,
+        color = FocusIosPalette.Text,
+    )
+    if (!status?.watchUrl.isNullOrBlank()) {
+        Text(
+            text = status?.watchUrl.orEmpty(),
+            style = MaterialTheme.typography.bodySmall,
+            color = FocusIosPalette.TextMuted,
+        )
     }
 }
 

@@ -4,11 +4,15 @@ import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnaly
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastHighlightCandidate
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CompleteBroadcastAnalysisJob
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.CreateBroadcastAnalysisJob
 
 interface BroadcastRepository {
-    suspend fun createBroadcast(title: String): Result<Broadcast>
+    suspend fun createBroadcast(
+        title: String,
+        outputMode: BroadcastOutputMode = BroadcastOutputMode.CHZZK_RTMP,
+    ): Result<Broadcast>
 
     suspend fun startBroadcast(broadcastId: String): Result<Broadcast>
 

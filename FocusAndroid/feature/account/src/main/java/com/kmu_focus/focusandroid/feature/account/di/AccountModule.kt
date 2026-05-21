@@ -2,6 +2,7 @@ package com.kmu_focus.focusandroid.feature.account.di
 
 import com.kmu_focus.focusandroid.feature.account.BuildConfig
 import com.kmu_focus.focusandroid.feature.account.data.oauth.ChzzkOAuthConfig
+import com.kmu_focus.focusandroid.feature.account.data.oauth.YoutubeOAuthConfig
 import com.kmu_focus.focusandroid.feature.account.data.remote.AccountApi
 import com.kmu_focus.focusandroid.feature.account.data.repository.AccountRepositoryImpl
 import com.kmu_focus.focusandroid.feature.account.domain.repository.AccountRepository
@@ -40,6 +41,16 @@ abstract class AccountModule {
                 clientId = BuildConfig.CHZZK_CLIENT_ID,
                 redirectUri = BuildConfig.CHZZK_REDIRECT_URI,
                 authBaseUrl = BuildConfig.CHZZK_AUTH_BASE_URL,
+            )
+        }
+
+        @Provides
+        @Singleton
+        fun provideYoutubeOAuthConfig(): YoutubeOAuthConfig {
+            return YoutubeOAuthConfig(
+                clientId = BuildConfig.YOUTUBE_CLIENT_ID,
+                redirectUri = BuildConfig.YOUTUBE_REDIRECT_URI,
+                authBaseUrl = BuildConfig.YOUTUBE_AUTH_BASE_URL,
             )
         }
     }

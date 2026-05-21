@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -35,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +53,9 @@ import com.kmu_focus.focusandroid.core.grpc.data.repository.GrpcMetadataReposito
 import com.kmu_focus.focusandroid.core.media.data.recorder.Mp4VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.data.recorder.TeeVideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.StreamingPlatformConnection
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.displayTitle
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.RegisteredOwner
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraScreen
@@ -90,6 +96,12 @@ interface BroadcastCameraEntryPoint {
 
 @Composable
 fun BroadcastCameraScreen(
+    availableOutputModes: List<BroadcastOutputMode>,
+    platformConnections: List<StreamingPlatformConnection>,
+    isPlatformActionInProgress: Boolean,
+    onConnectPlatform: (BroadcastOutputMode) -> Unit,
+    onDisconnectPlatform: (BroadcastOutputMode) -> Unit,
+    onRefreshPlatforms: () -> Unit,
     onRootBack: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: BroadcastCameraViewModel = hiltViewModel(),
@@ -118,6 +130,10 @@ fun BroadcastCameraScreen(
         if (cameraUiState.isCameraActive && !cameraUiState.isDetecting) {
             cameraViewModel.startDetection()
         }
+    }
+
+    LaunchedEffect(availableOutputModes) {
+        viewModel.setAvailableOutputModes(availableOutputModes)
     }
 
     LaunchedEffect(uiState.isPreparing, uiState.isBroadcasting) {
@@ -418,6 +434,10 @@ fun BroadcastCameraScreen(
                 lensFacing = cameraUiState.lensFacing,
                 privacyMode = cameraUiState.privacyMode,
                 registeredOwners = cameraUiState.registeredOwners,
+                platformConnections = platformConnections,
+                selectedOutputMode = uiState.selectedOutputMode,
+                isPlatformActionInProgress = isPlatformActionInProgress,
+                platformSelectionEnabled = !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping,
                 onDismiss = { isMenuPresented = false },
                 onSelectLensFacing = { target ->
                     if (cameraUiState.lensFacing != target) {
@@ -425,6 +445,8 @@ fun BroadcastCameraScreen(
                     }
                 },
                 onSelectPrivacyMode = cameraViewModel::setPrivacyMode,
+                onSelectOutputMode = viewModel::selectOutputMode,
+                onConnectPlatform = onConnectPlatform,
                 onRequestDeleteOwner = { pendingOwnerDeletion = it },
             )
         }
@@ -584,9 +606,15 @@ private fun BroadcastMenuPanel(
     lensFacing: LensFacing,
     privacyMode: PrivacyMode,
     registeredOwners: List<RegisteredOwner>,
+    platformConnections: List<StreamingPlatformConnection>,
+    selectedOutputMode: BroadcastOutputMode,
+    isPlatformActionInProgress: Boolean,
+    platformSelectionEnabled: Boolean,
     onDismiss: () -> Unit,
     onSelectLensFacing: (LensFacing) -> Unit,
     onSelectPrivacyMode: (PrivacyMode) -> Unit,
+    onSelectOutputMode: (BroadcastOutputMode) -> Unit,
+    onConnectPlatform: (BroadcastOutputMode) -> Unit,
     onRequestDeleteOwner: (RegisteredOwner) -> Unit,
 ) {
     Surface(
@@ -674,6 +702,15 @@ private fun BroadcastMenuPanel(
                     )
                 }
             }
+
+            PlatformIconRow(
+                platformConnections = platformConnections,
+                selectedOutputMode = selectedOutputMode,
+                platformSelectionEnabled = platformSelectionEnabled,
+                isPlatformActionInProgress = isPlatformActionInProgress,
+                onSelectOutputMode = onSelectOutputMode,
+                onConnectPlatform = onConnectPlatform,
+            )
         }
     }
 }
@@ -786,6 +823,119 @@ private fun PrivacyToggleChip(
             color = if (selected) Color.White else Color.Black.copy(alpha = 0.74f),
             style = MaterialTheme.typography.labelLarge,
         )
+    }
+}
+
+@Composable
+private fun PlatformIconRow(
+    platformConnections: List<StreamingPlatformConnection>,
+    selectedOutputMode: BroadcastOutputMode,
+    platformSelectionEnabled: Boolean,
+    isPlatformActionInProgress: Boolean,
+    onSelectOutputMode: (BroadcastOutputMode) -> Unit,
+    onConnectPlatform: (BroadcastOutputMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally),
+    ) {
+        platformConnections.forEach { connection ->
+            PlatformLogoButton(
+                connection = connection,
+                selected = connection.connected && connection.outputMode == selectedOutputMode,
+                enabled = !isPlatformActionInProgress && platformSelectionEnabled,
+                onClick = {
+                    if (connection.connected) {
+                        onSelectOutputMode(connection.outputMode)
+                    } else {
+                        onConnectPlatform(connection.outputMode)
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlatformLogoButton(
+    connection: StreamingPlatformConnection,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(22.dp),
+        color = Color.Black.copy(alpha = 0.04f),
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = when {
+                selected -> FocusIosPalette.Primary
+                connection.connected -> Color.Black.copy(alpha = 0.10f)
+                else -> Color.Black.copy(alpha = 0.08f)
+            },
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .padding(12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (connection.outputMode) {
+                BroadcastOutputMode.CHZZK_RTMP -> ChzzkPlatformLogo(connected = connection.connected)
+                BroadcastOutputMode.YOUTUBE_RTMP -> YoutubePlatformLogo(connected = connection.connected)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChzzkPlatformLogo(
+    connected: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val background = if (connected) Color(0xFF03C75A) else Color(0xFFD1D5DB)
+    val symbol = if (connected) Color.White else Color(0xFF6B7280)
+    Canvas(modifier = modifier.size(36.dp)) {
+        drawRoundRect(
+            color = background,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.minDimension * 0.24f),
+        )
+        val mark = Path().apply {
+            moveTo(size.width * 0.28f, size.height * 0.23f)
+            lineTo(size.width * 0.62f, size.height * 0.23f)
+            lineTo(size.width * 0.50f, size.height * 0.44f)
+            lineTo(size.width * 0.72f, size.height * 0.44f)
+            lineTo(size.width * 0.40f, size.height * 0.78f)
+            lineTo(size.width * 0.50f, size.height * 0.56f)
+            lineTo(size.width * 0.28f, size.height * 0.56f)
+            close()
+        }
+        drawPath(path = mark, color = symbol)
+    }
+}
+
+@Composable
+private fun YoutubePlatformLogo(
+    connected: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val background = if (connected) Color(0xFFFF0033) else Color(0xFFD1D5DB)
+    val symbol = if (connected) Color.White else Color(0xFF6B7280)
+    Canvas(modifier = modifier.size(width = 44.dp, height = 32.dp)) {
+        drawRoundRect(
+            color = background,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height * 0.34f),
+        )
+        val play = Path().apply {
+            moveTo(size.width * 0.42f, size.height * 0.28f)
+            lineTo(size.width * 0.42f, size.height * 0.72f)
+            lineTo(size.width * 0.72f, size.height * 0.50f)
+            close()
+        }
+        drawPath(path = play, color = symbol)
     }
 }
 

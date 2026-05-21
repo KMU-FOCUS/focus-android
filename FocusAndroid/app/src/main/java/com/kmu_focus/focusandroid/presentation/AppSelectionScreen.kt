@@ -32,6 +32,8 @@ import com.kmu_focus.focusandroid.core.ui.ios.FocusIosStatusChip
 import com.kmu_focus.focusandroid.feature.account.presentation.mypage.MyPageViewModel
 import com.kmu_focus.focusandroid.feature.auth.presentation.AuthScreen
 import com.kmu_focus.focusandroid.feature.auth.presentation.AuthSessionViewModel
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.StreamingPlatformConnection
 import com.kmu_focus.focusandroid.feature.video.presentation.main.MainScreen
 
 @Composable
@@ -71,6 +73,24 @@ private fun AuthenticatedFocusEntryScreen(
     val uriHandler = LocalUriHandler.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val isChzzkConnected = uiState.chzzkStatus?.connected == true
+    val isYoutubeConnected = uiState.youtubeStatus?.connected == true
+    val platformConnections = listOf(
+        StreamingPlatformConnection(
+            outputMode = BroadcastOutputMode.CHZZK_RTMP,
+            connected = isChzzkConnected,
+            channelName = uiState.chzzkStatus?.channelName,
+            watchUrl = uiState.chzzkStatus?.watchUrl,
+        ),
+        StreamingPlatformConnection(
+            outputMode = BroadcastOutputMode.YOUTUBE_RTMP,
+            connected = isYoutubeConnected,
+            channelName = uiState.youtubeStatus?.channelName,
+            watchUrl = uiState.youtubeStatus?.watchUrl,
+        ),
+    )
+    val availableOutputModes = platformConnections
+        .filter { it.connected }
+        .map { it.outputMode }
 
     LaunchedEffect(uiState.pendingExternalUrl) {
         val targetUrl = uiState.pendingExternalUrl ?: return@LaunchedEffect
@@ -81,7 +101,7 @@ private fun AuthenticatedFocusEntryScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshChzzkStatus()
+                viewModel.refreshPlatformStatuses()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -90,33 +110,59 @@ private fun AuthenticatedFocusEntryScreen(
         }
     }
 
-    if (isChzzkConnected) {
-        MainShellScreen(modifier = modifier.fillMaxSize())
+    if (availableOutputModes.isNotEmpty()) {
+        MainShellScreen(
+            availableOutputModes = availableOutputModes,
+            platformConnections = platformConnections,
+            isPlatformActionInProgress = uiState.isPlatformActionInProgress,
+            onConnectPlatform = { outputMode ->
+                when (outputMode) {
+                    BroadcastOutputMode.CHZZK_RTMP -> viewModel.startChzzkConnect()
+                    BroadcastOutputMode.YOUTUBE_RTMP -> viewModel.startYoutubeConnect()
+                }
+            },
+            onDisconnectPlatform = { outputMode ->
+                when (outputMode) {
+                    BroadcastOutputMode.CHZZK_RTMP -> viewModel.disconnectChzzk()
+                    BroadcastOutputMode.YOUTUBE_RTMP -> viewModel.disconnectYoutube()
+                }
+            },
+            onRefreshPlatforms = viewModel::refreshPlatformStatuses,
+            modifier = modifier.fillMaxSize(),
+        )
         return
     }
 
-    FocusChzzkGateScreen(
+    FocusPlatformGateScreen(
         modifier = modifier.fillMaxSize(),
-        channelName = uiState.chzzkStatus?.channelName,
-        watchUrl = uiState.chzzkStatus?.watchUrl,
-        isLoading = uiState.isChzzkLoading || uiState.isChzzkActionInProgress,
+        chzzkChannelName = uiState.chzzkStatus?.channelName,
+        chzzkWatchUrl = uiState.chzzkStatus?.watchUrl,
+        youtubeChannelName = uiState.youtubeStatus?.channelName,
+        youtubeWatchUrl = uiState.youtubeStatus?.watchUrl,
+        isLoading = uiState.isChzzkLoading || uiState.isYoutubeLoading || uiState.isPlatformActionInProgress,
         isAwaitingConnection = uiState.isAwaitingChzzkConnection,
+        isAwaitingYoutubeConnection = uiState.isAwaitingYoutubeConnection,
         errorMessage = uiState.error,
-        onConnect = viewModel::startChzzkConnect,
-        onRefresh = viewModel::refreshChzzkStatus,
+        onConnectChzzk = viewModel::startChzzkConnect,
+        onConnectYoutube = viewModel::startYoutubeConnect,
+        onRefresh = viewModel::refreshPlatformStatuses,
         onLogout = viewModel::logout,
         isLoggingOut = uiState.isLoggingOut,
     )
 }
 
 @Composable
-private fun FocusChzzkGateScreen(
-    channelName: String?,
-    watchUrl: String?,
+private fun FocusPlatformGateScreen(
+    chzzkChannelName: String?,
+    chzzkWatchUrl: String?,
+    youtubeChannelName: String?,
+    youtubeWatchUrl: String?,
     isLoading: Boolean,
     isAwaitingConnection: Boolean,
+    isAwaitingYoutubeConnection: Boolean,
     errorMessage: String?,
-    onConnect: () -> Unit,
+    onConnectChzzk: () -> Unit,
+    onConnectYoutube: () -> Unit,
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     isLoggingOut: Boolean,
@@ -139,12 +185,12 @@ private fun FocusChzzkGateScreen(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 androidx.compose.material3.Text(
-                    text = "치지직 연동이 필요해요",
+                    text = "채널 연동이 필요해요",
                     style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
                     color = FocusIosPalette.Text,
                 )
                 androidx.compose.material3.Text(
-                    text = "카카오 로그인은 완료됐고, 이제 치지직 채널만 연결하면 바로 방송을 시작할 수 있어요.",
+                    text = "카카오 로그인은 완료됐고, 이제 치지직 또는 유튜브 채널을 연결하면 바로 방송을 시작할 수 있어요.",
                     style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
                     color = FocusIosPalette.TextMuted,
                 )
@@ -152,13 +198,24 @@ private fun FocusChzzkGateScreen(
 
             FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
                 GateInfoRow(title = "카카오 로그인", value = "완료")
-                GateInfoRow(title = "치지직 채널", value = channelName ?: "아직 연결되지 않음")
-                if (!watchUrl.isNullOrBlank()) {
-                    GateInfoRow(title = "연결 채널", value = watchUrl)
+                GateInfoRow(title = "치지직 채널", value = chzzkChannelName ?: "아직 연결되지 않음")
+                if (!chzzkWatchUrl.isNullOrBlank()) {
+                    GateInfoRow(title = "치지직 링크", value = chzzkWatchUrl)
+                }
+                GateInfoRow(title = "유튜브 채널", value = youtubeChannelName ?: "아직 연결되지 않음")
+                if (!youtubeWatchUrl.isNullOrBlank()) {
+                    GateInfoRow(title = "유튜브 링크", value = youtubeWatchUrl)
                 }
                 if (isAwaitingConnection) {
                     FocusIosStatusChip(
                         text = "연동 완료 후 상태 확인 대기 중",
+                        containerColor = FocusIosPalette.WarningSoft,
+                        contentColor = FocusIosPalette.Warning,
+                    )
+                }
+                if (isAwaitingYoutubeConnection) {
+                    FocusIosStatusChip(
+                        text = "유튜브 연동 완료 후 상태 확인 대기 중",
                         containerColor = FocusIosPalette.WarningSoft,
                         contentColor = FocusIosPalette.Warning,
                     )
@@ -179,7 +236,13 @@ private fun FocusChzzkGateScreen(
 
             FocusIosPrimaryButton(
                 text = if (isLoading) "연동 페이지 준비 중..." else "치지직 연동하기",
-                onClick = onConnect,
+                onClick = onConnectChzzk,
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FocusIosPrimaryButton(
+                text = if (isLoading) "연동 페이지 준비 중..." else "유튜브 연동하기",
+                onClick = onConnectYoutube,
                 enabled = !isLoading,
                 modifier = Modifier.fillMaxWidth(),
             )

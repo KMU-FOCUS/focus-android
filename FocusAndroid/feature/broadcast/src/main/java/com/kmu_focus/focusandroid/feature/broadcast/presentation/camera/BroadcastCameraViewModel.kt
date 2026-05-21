@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.broadcast.BuildConfig
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.BroadcastStreamingUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CompleteBroadcastAnalysisJobUseCase
 import com.kmu_focus.focusandroid.feature.broadcast.domain.usecase.CreateBroadcastUseCase
@@ -36,6 +37,8 @@ data class BroadcastCameraUiState(
     val isStopping: Boolean = false,
     val error: String? = null,
     val completedReport: CompletedBroadcastReport? = null,
+    val availableOutputModes: List<BroadcastOutputMode> = listOf(BroadcastOutputMode.CHZZK_RTMP),
+    val selectedOutputMode: BroadcastOutputMode = BroadcastOutputMode.CHZZK_RTMP,
 )
 
 @HiltViewModel
@@ -64,6 +67,29 @@ class BroadcastCameraViewModel @Inject constructor(
 
     val currentMuxerFactory: RealTimeRecorder.VideoMuxerFactory?
         get() = broadcastStreamingUseCase.currentMuxerFactory
+
+    fun setAvailableOutputModes(outputModes: List<BroadcastOutputMode>) {
+        val resolvedModes = outputModes.distinct().ifEmpty {
+            listOf(BroadcastOutputMode.CHZZK_RTMP)
+        }
+        _uiState.update { current ->
+            current.copy(
+                availableOutputModes = resolvedModes,
+                selectedOutputMode = current.selectedOutputMode.takeIf { it in resolvedModes }
+                    ?: resolvedModes.first(),
+            )
+        }
+    }
+
+    fun selectOutputMode(outputMode: BroadcastOutputMode) {
+        _uiState.update { current ->
+            if (outputMode !in current.availableOutputModes) {
+                current
+            } else {
+                current.copy(selectedOutputMode = outputMode)
+            }
+        }
+    }
 
     fun updateSession(
         broadcastId: String,
@@ -104,7 +130,10 @@ class BroadcastCameraViewModel @Inject constructor(
 
         startBroadcastJob?.cancel()
         startBroadcastJob = viewModelScope.launch {
-            createBroadcastUseCase(buildAutoBroadcastTitle())
+            createBroadcastUseCase(
+                title = buildAutoBroadcastTitle(),
+                outputMode = currentState.selectedOutputMode,
+            )
                 .onSuccess { broadcast ->
                     updateSession(
                         broadcastId = broadcast.broadcastId,
@@ -318,6 +347,8 @@ class BroadcastCameraViewModel @Inject constructor(
         srtState: SrtConnectionState = SrtConnectionState.DISCONNECTED,
         completedReport: CompletedBroadcastReport? = null,
     ) {
+        val preservedModes = uiState.value.availableOutputModes
+        val preservedSelection = uiState.value.selectedOutputMode
         savedStateHandle[BROADCAST_ID_KEY] = ""
         savedStateHandle[STREAM_KEY_KEY] = ""
         savedStateHandle[HLS_URL_KEY] = ""
@@ -326,6 +357,10 @@ class BroadcastCameraViewModel @Inject constructor(
                 srtState = srtState,
                 error = error,
                 completedReport = completedReport,
+                availableOutputModes = preservedModes,
+                selectedOutputMode = preservedSelection.takeIf { it in preservedModes }
+                    ?: preservedModes.firstOrNull()
+                    ?: BroadcastOutputMode.CHZZK_RTMP,
             )
         }
     }
