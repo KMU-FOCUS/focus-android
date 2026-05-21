@@ -28,7 +28,6 @@ private const val BROADCAST_ID_KEY = "broadcastId"
 private const val STREAM_KEY_KEY = "streamKey"
 private const val HLS_URL_KEY = "hlsUrl"
 private const val ANALYSIS_POLL_INTERVAL_MS = 2_000L
-private const val ANALYSIS_MAX_POLL_ATTEMPTS = 15
 
 data class BroadcastCameraUiState(
     val broadcastId: String = "",
@@ -418,49 +417,29 @@ class BroadcastCameraViewModel @Inject constructor(
         broadcastId: String,
         seed: CompletedBroadcastReportSeed,
     ): CompletedBroadcastReport {
-        val processingReport = buildProcessingCompletedBroadcastReport(
-            seed = seed,
-            analysisStatus = BroadcastAnalysisStatus.PROCESSING,
-        )
-
         val latestAnalysis = awaitLatestAnalysisResult(broadcastId)
         val highlightMoments = getBroadcastHighlightsUseCase(broadcastId)
             .getOrDefault(emptyList())
             .map { it.toCompletedHighlightMoment() }
 
-        if (latestAnalysis != null) {
-            return latestAnalysis.toCompletedBroadcastReport(seed, highlightMoments)
-        }
-
-        return processingReport.copy(
-            highlightCount = maxOf(processingReport.highlightCount, highlightMoments.size),
-            highlightMoments = highlightMoments,
-        )
+        return latestAnalysis.toCompletedBroadcastReport(seed, highlightMoments)
     }
 
     private suspend fun awaitLatestAnalysisResult(
         broadcastId: String,
-    ): BroadcastAnalysisResult? {
-        var lastKnownResult: BroadcastAnalysisResult? = null
-        repeat(ANALYSIS_MAX_POLL_ATTEMPTS) { attempt ->
+    ): BroadcastAnalysisResult {
+        while (true) {
             val latest = getLatestBroadcastAnalysisUseCase(broadcastId).getOrNull()
             if (latest != null) {
-                lastKnownResult = latest
                 val jobStatus = latest.latestJob?.jobStatus
-                if (jobStatus == BroadcastAnalysisStatus.FAILED) {
-                    return latest
-                }
-                if (jobStatus == BroadcastAnalysisStatus.SUCCEEDED && latest.isPresentableFinalReport()) {
+                if (
+                    jobStatus == BroadcastAnalysisStatus.SUCCEEDED ||
+                    jobStatus == BroadcastAnalysisStatus.FAILED
+                ) {
                     return latest
                 }
             }
-
-            if (attempt < ANALYSIS_MAX_POLL_ATTEMPTS - 1) {
-                delay(ANALYSIS_POLL_INTERVAL_MS)
-            }
-        }
-        return lastKnownResult?.takeIf {
-            it.latestJob?.jobStatus == BroadcastAnalysisStatus.FAILED || it.isPresentableFinalReport()
+            delay(ANALYSIS_POLL_INTERVAL_MS)
         }
     }
 

@@ -12,17 +12,6 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.max
 
-private val PLACEHOLDER_REPORT_MARKERS = listOf(
-    "gemini",
-    "파이프라인",
-    "polling",
-    "snapshot",
-    "등록했습니다",
-    "연결해",
-    "집계되지 않았습니다",
-    "비어 있습니다",
-)
-
 data class CompletedBroadcastReportSeed(
     val broadcastId: String,
     val durationSec: Int,
@@ -104,36 +93,25 @@ internal fun BroadcastAnalysisResult.toCompletedBroadcastReport(
     seed: CompletedBroadcastReportSeed,
     highlights: List<CompletedBroadcastHighlightMoment>,
 ): CompletedBroadcastReport {
+    val resolvedStatus = latestJob?.jobStatus ?: BroadcastAnalysisStatus.PROCESSING
     val fallback = buildProcessingCompletedBroadcastReport(
         seed = seed,
-        analysisStatus = latestJob?.jobStatus ?: BroadcastAnalysisStatus.PROCESSING,
+        analysisStatus = resolvedStatus,
         analysisJobId = latestJob?.analysisJobId,
     )
     val latest = latestReport ?: return fallback.copy(
-        analysisStatus = latestJob?.jobStatus ?: BroadcastAnalysisStatus.PROCESSING,
+        analysisStatus = resolvedStatus,
         analysisErrorMessage = latestJob?.errorMessage,
         highlightCount = maxOf(highlightCount, highlights.size),
         highlightMoments = highlights,
     )
-    if (!isPresentableFinalReport()) {
-        return fallback.copy(
-            analysisStatus = if (latestJob?.jobStatus == BroadcastAnalysisStatus.FAILED) {
-                BroadcastAnalysisStatus.FAILED
-            } else {
-                BroadcastAnalysisStatus.PROCESSING
-            },
-            analysisErrorMessage = latestJob?.errorMessage,
-            highlightCount = maxOf(highlightCount, highlights.size),
-            highlightMoments = highlights,
-        )
-    }
 
     return CompletedBroadcastReport(
         reportId = latest.aiReportId,
         title = latest.title.ifBlank { fallback.title },
         broadcastId = broadcastId,
         analysisJobId = latestJob?.analysisJobId,
-        analysisStatus = latestJob?.jobStatus ?: BroadcastAnalysisStatus.SUCCEEDED,
+        analysisStatus = resolvedStatus,
         analysisErrorMessage = latestJob?.errorMessage,
         completedAtMillis = latest.createdAt.toEpochMillisOrNull()
             ?: latestJob?.completedAt.toEpochMillisOrNull()
@@ -159,16 +137,8 @@ internal fun BroadcastAnalysisResult.toCompletedBroadcastReport(
         },
         highlightMoments = highlights,
         recordingFilePath = seed.recordingFilePath,
-        hasFinalAnalysis = true,
+        hasFinalAnalysis = resolvedStatus == BroadcastAnalysisStatus.SUCCEEDED,
     )
-}
-
-internal fun BroadcastAnalysisResult.isPresentableFinalReport(): Boolean {
-    if (latestJob?.jobStatus == BroadcastAnalysisStatus.FAILED) {
-        return false
-    }
-    val report = latestReport ?: return false
-    return !report.looksLikePlaceholderReport()
 }
 
 internal fun BroadcastHighlightCandidate.toCompletedHighlightMoment(): CompletedBroadcastHighlightMoment {
@@ -198,21 +168,6 @@ internal fun Int.toDurationLabel(): String {
 
 internal fun Long.toDateTimeLabel(): String {
     return SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.KOREA).format(Date(this))
-}
-
-private fun com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAiReport.looksLikePlaceholderReport(): Boolean {
-    val allText = buildList {
-        add(summary)
-        addAll(strengths)
-        addAll(weaknesses)
-        addAll(actionItems)
-    }.joinToString("\n").lowercase(Locale.ROOT)
-
-    val containsPlaceholderMarker = PLACEHOLDER_REPORT_MARKERS.any { marker ->
-        allText.contains(marker.lowercase(Locale.ROOT))
-    }
-    val lacksStructuredSignals = contentRatios.isEmpty() && (viewerPeakInsight?.peakViewerCount ?: 0) <= 0
-    return containsPlaceholderMarker && lacksStructuredSignals
 }
 
 private fun String?.toReadableDateTimeLabel(): String? {

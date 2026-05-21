@@ -25,6 +25,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -106,6 +107,20 @@ class BroadcastCameraViewModelTest {
             createdAt = "2026-05-21T00:00:00",
         ),
         highlightCount = 1,
+    )
+    private val processingAnalysisResult = sampleAnalysisResult.copy(
+        latestJob = sampleAnalysisJob.copy(
+            jobStatus = BroadcastAnalysisStatus.PROCESSING,
+            completedAt = null,
+        ),
+        latestReport = null,
+    )
+    private val failedAnalysisResult = sampleAnalysisResult.copy(
+        latestJob = sampleAnalysisJob.copy(
+            jobStatus = BroadcastAnalysisStatus.FAILED,
+            errorMessage = "분석 실패",
+        ),
+        latestReport = null,
     )
 
     @Before
@@ -229,6 +244,7 @@ class BroadcastCameraViewModelTest {
                 recordingFilePath = null,
             ),
         )
+        advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertFalse(state.isBroadcasting)
@@ -240,6 +256,78 @@ class BroadcastCameraViewModelTest {
         assertEquals(BroadcastAnalysisStatus.SUCCEEDED, state.completedReport?.analysisStatus)
         coVerify(exactly = 1) { broadcastStreamingUseCase.stopBroadcast("broadcast-1") }
         coVerify(exactly = 1) { deleteBroadcastUseCase.invoke("broadcast-1") }
+    }
+
+    @Test
+    fun `stopBroadcasting은 analysis job이 processing이면 polling을 계속하고 succeeded에서 멈춘다`() = runTest {
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
+        coEvery { broadcastStreamingUseCase.prepareBroadcastStreaming(any(), any(), any()) } returns Result.success(Unit)
+        coEvery { broadcastStreamingUseCase.confirmBroadcastStarted("broadcast-1") } returns Result.success(
+            preparedBroadcast.copy(status = BroadcastStatus.ON_AIR),
+        )
+        every { broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any()) } returns Job()
+        coEvery { broadcastStreamingUseCase.stopBroadcast("broadcast-1") } returns Result.success(Unit)
+        coEvery { deleteBroadcastUseCase.invoke("broadcast-1") } returns Result.success(Unit)
+        coEvery { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") } returnsMany listOf(
+            Result.success(processingAnalysisResult),
+            Result.success(processingAnalysisResult),
+            Result.success(sampleAnalysisResult),
+        )
+        coEvery { getBroadcastHighlightsUseCase.invoke("broadcast-1") } returns Result.success(emptyList())
+
+        viewModel = createViewModel()
+
+        viewModel.startBroadcasting()
+        viewModel.confirmBroadcastStarted()
+        viewModel.stopBroadcasting(
+            CompletedBroadcastReportSeed(
+                broadcastId = "broadcast-1",
+                durationSec = 30,
+                ownerCount = 1,
+                recordingFilePath = null,
+            ),
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(BroadcastAnalysisStatus.SUCCEEDED, state.completedReport?.analysisStatus)
+        coVerify(exactly = 3) { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") }
+    }
+
+    @Test
+    fun `stopBroadcasting은 analysis job이 failed면 polling을 멈추고 실패 UI를 반영한다`() = runTest {
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
+        coEvery { broadcastStreamingUseCase.prepareBroadcastStreaming(any(), any(), any()) } returns Result.success(Unit)
+        coEvery { broadcastStreamingUseCase.confirmBroadcastStarted("broadcast-1") } returns Result.success(
+            preparedBroadcast.copy(status = BroadcastStatus.ON_AIR),
+        )
+        every { broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any()) } returns Job()
+        coEvery { broadcastStreamingUseCase.stopBroadcast("broadcast-1") } returns Result.success(Unit)
+        coEvery { deleteBroadcastUseCase.invoke("broadcast-1") } returns Result.success(Unit)
+        coEvery { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") } returnsMany listOf(
+            Result.success(processingAnalysisResult),
+            Result.success(failedAnalysisResult),
+        )
+        coEvery { getBroadcastHighlightsUseCase.invoke("broadcast-1") } returns Result.success(emptyList())
+
+        viewModel = createViewModel()
+
+        viewModel.startBroadcasting()
+        viewModel.confirmBroadcastStarted()
+        viewModel.stopBroadcasting(
+            CompletedBroadcastReportSeed(
+                broadcastId = "broadcast-1",
+                durationSec = 30,
+                ownerCount = 1,
+                recordingFilePath = null,
+            ),
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(BroadcastAnalysisStatus.FAILED, state.completedReport?.analysisStatus)
+        assertEquals("분석 실패", state.completedReport?.analysisErrorMessage)
+        coVerify(exactly = 2) { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") }
     }
 
     @Test

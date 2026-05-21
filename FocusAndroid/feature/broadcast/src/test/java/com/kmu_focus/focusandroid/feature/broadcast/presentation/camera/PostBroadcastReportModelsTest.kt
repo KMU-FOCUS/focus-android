@@ -70,7 +70,7 @@ class PostBroadcastReportModelsTest {
     }
 
     @Test
-    fun `placeholder 성격의 서버 리포트는 아직 완료로 표시하지 않는다`() {
+    fun `jobStatus가 succeeded면 placeholder처럼 보여도 서버 응답 그대로 완료로 표시한다`() {
         val seed = CompletedBroadcastReportSeed(
             broadcastId = "broadcast-1",
             durationSec = 49,
@@ -130,10 +130,10 @@ class PostBroadcastReportModelsTest {
 
         val report = result.toCompletedBroadcastReport(seed, emptyList())
 
-        assertEquals(BroadcastAnalysisStatus.PROCESSING, report.analysisStatus)
-        assertFalse(report.hasFinalAnalysis)
-        assertTrue(report.summary.isBlank())
-        assertTrue(report.strengths.isEmpty())
-        assertTrue(report.actionItems.isEmpty())
+        assertEquals(BroadcastAnalysisStatus.SUCCEEDED, report.analysisStatus)
+        assertTrue(report.hasFinalAnalysis)
+        assertEquals(result.latestReport?.summary, report.summary)
+        assertEquals(result.latestReport?.strengths, report.strengths)
+        assertEquals(result.latestReport?.actionItems, report.actionItems)
     }
 }
