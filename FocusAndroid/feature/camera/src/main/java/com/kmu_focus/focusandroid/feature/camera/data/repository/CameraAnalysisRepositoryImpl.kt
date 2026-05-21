@@ -70,6 +70,8 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
     private var broadcastSourceWidth = 0
     private var broadcastSourceHeight = 0
     private var limitBroadcastMetadataFaces = false
+    private val broadcastMetadataTrackingSlotAllocator =
+        BroadcastMetadataTrackingSlotAllocator(MAX_BROADCAST_METADATA_FACE_COUNT)
     private var metadataDumpRepository: JsonMetadataRepository? = null
     private var metadataDumpDir: File? = null
 
@@ -261,6 +263,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             metadataRepository = repository
             encoderPtsBaseUs = UNSET_PTS_BASE_US
             limitBroadcastMetadataFaces = repository != null && sessionId != null
+            broadcastMetadataTrackingSlotAllocator.reset()
         }
         metadataEnqueuedCount.set(0L)
         metadataDroppedBeforeBaseCount.set(0L)
@@ -336,6 +339,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             metadataFrameIndex = 0
             encoderPtsBaseUs = UNSET_PTS_BASE_US
             limitBroadcastMetadataFaces = false
+            broadcastMetadataTrackingSlotAllocator.reset()
             current
         }
         repo?.close()
@@ -398,12 +402,19 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         } else {
             facePayloads
         }
+        val remappedFacePayloads = if (limitBroadcastMetadataFaces) {
+            synchronized(metadataStateLock) {
+                broadcastMetadataTrackingSlotAllocator.remapForTransmission(limitedFacePayloads)
+            }
+        } else {
+            limitedFacePayloads
+        }
         val faceCapDroppedCount =
             facePayloads.count { it.isOwner == false } - limitedFacePayloads.count { it.isOwner == false }
         val metadata = MetadataMapper.mapFrame(
             sessionId = sessionId,
             timestampSeconds = frameExport.timestamp,
-            faces = limitedFacePayloads,
+            faces = remappedFacePayloads,
             coordinateSpace = coordinateSpace,
             ptsBaseUs = baseUs,
             overrideTimestampUs = frameTimestampUs,
@@ -501,4 +512,68 @@ internal fun limitBroadcastMetadataFacesForStreaming(
 private fun faceBoundingBoxArea(bbox: IntArray): Long {
     if (bbox.size < 4) return 0L
     return bbox[2].toLong().coerceAtLeast(0L) * bbox[3].toLong().coerceAtLeast(0L)
+}
+
+internal class BroadcastMetadataTrackingSlotAllocator(
+    private val maxSlots: Int,
+) {
+    private val slotByTrackId = linkedMapOf<Int, Int>()
+    private val trackIdBySlot = IntArray(maxSlots) { UNASSIGNED_TRACK_ID }
+
+    fun reset() {
+        slotByTrackId.clear()
+        trackIdBySlot.fill(UNASSIGNED_TRACK_ID)
+    }
+
+    fun remapForTransmission(
+        faces: List<MetadataMapper.FaceExportPayload>,
+    ): List<MetadataMapper.FaceExportPayload> {
+        if (maxSlots <= 0) {
+            return faces
+        }
+
+        val transmittedTrackIds = faces.asSequence()
+            .filter { it.isOwner == false }
+            .map { it.trackingId }
+            .toSet()
+
+        releaseInactiveSlots(activeTrackIds = transmittedTrackIds)
+
+        return faces.map { face ->
+            if (face.isOwner != false) {
+                face
+            } else {
+                val slot = slotByTrackId[face.trackingId] ?: allocateSlot(face.trackingId)
+                if (slot == null) {
+                    face
+                } else {
+                    face.copy(trackingId = slot)
+                }
+            }
+        }
+    }
+
+    private fun releaseInactiveSlots(activeTrackIds: Set<Int>) {
+        val inactiveTrackIds = slotByTrackId.keys.filterNot(activeTrackIds::contains)
+        inactiveTrackIds.forEach { trackId ->
+            val slot = slotByTrackId.remove(trackId) ?: return@forEach
+            if (slot in trackIdBySlot.indices) {
+                trackIdBySlot[slot] = UNASSIGNED_TRACK_ID
+            }
+        }
+    }
+
+    private fun allocateSlot(trackId: Int): Int? {
+        val freeSlot = trackIdBySlot.indexOfFirst { it == UNASSIGNED_TRACK_ID }
+        if (freeSlot < 0) {
+            return null
+        }
+        slotByTrackId[trackId] = freeSlot
+        trackIdBySlot[freeSlot] = trackId
+        return freeSlot
+    }
+
+    private companion object {
+        private const val UNASSIGNED_TRACK_ID = -1
+    }
 }
