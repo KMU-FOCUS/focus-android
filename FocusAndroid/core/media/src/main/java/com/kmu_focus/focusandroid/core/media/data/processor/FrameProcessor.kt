@@ -16,6 +16,8 @@ import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import java.nio.ByteBuffer
 import javax.inject.Inject
+import kotlin.math.ceil
+import kotlin.math.floor
 
 class FrameProcessor @Inject constructor(
     private val faceDetector: FaceDetector,
@@ -25,8 +27,21 @@ class FrameProcessor @Inject constructor(
     private val trackLabelState: TrackLabelState,
     private val embeddingExtractor: ArcFaceEmbeddingExtractor
 ) {
+    private data class RecognitionCropWindow(
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int,
+    )
+
+    companion object {
+        private const val MAX_3DMM_FACE_COUNT = 5
+        private const val RECOGNITION_CROP_SCALE = 2.0f
+    }
+
     // GL/트랜스코드 루프에서 매 프레임 Bitmap 신규 할당을 피하기 위해 스레드별 재사용한다.
     private val frameBitmapHolder = ThreadLocal<Bitmap>()
+    private val recognitionQueue = linkedSetOf<Int>()
 
     @Volatile
     private var privacyMode: PrivacyMode = PrivacyMode.Avatar
@@ -41,10 +56,22 @@ class FrameProcessor @Inject constructor(
             .filter { it.confidence >= config.confidenceThreshold }
 
         val shouldExtract3dmm = activePrivacyMode == PrivacyMode.Avatar
+        val tdmmCandidateIndices = if (shouldExtract3dmm) {
+            selectLargestFaceIndices(
+                faces = faces,
+                maxFaceCount = MAX_3DMM_FACE_COUNT,
+            )
+        } else {
+            emptySet()
+        }
         val raw3dmmList = if (shouldExtract3dmm && faces.isNotEmpty()) {
-            faces.map { face ->
-                val rect = Rect(face.x, face.y, face.x + face.width, face.y + face.height)
-                facial3DMMExtractor.extract3DMM(bitmap, rect)?.coeffs
+            faces.mapIndexed { idx, face ->
+                if (idx !in tdmmCandidateIndices) {
+                    null
+                } else {
+                    val rect = Rect(face.x, face.y, face.x + face.width, face.y + face.height)
+                    facial3DMMExtractor.extract3DMM(bitmap, rect)?.coeffs
+                }
             }
         } else {
             List(faces.size) { null }
@@ -60,50 +87,88 @@ class FrameProcessor @Inject constructor(
             faces.indices.toList()
         }
 
-        fun hasValidRecognitionInput(idx: Int): Boolean = when {
-            shouldExtract3dmm -> raw3dmmList.getOrNull(idx) != null
-            else -> faces.getOrNull(idx)?.landmarks != null
-        }
+        fun hasValidRecognitionInput(idx: Int): Boolean = faces.getOrNull(idx)?.landmarks != null
+        val seenTrackIds = trackingIds.toSet()
+        trackLabelState.beginFrame(seenTrackIds)
+        pruneRecognitionQueue(seenTrackIds)
 
         if (faces.isNotEmpty()) {
-            trackLabelState.beginFrame(trackingIds.toSet())
+            val recognitionInputIndicesByTrackId = mutableMapOf<Int, Int>()
             for (idx in faces.indices) {
                 if (!hasValidRecognitionInput(idx)) continue
-                val face = faces[idx]
                 val trackId = trackingIds.getOrElse(idx) { idx }
+                recognitionInputIndicesByTrackId[trackId] = idx
                 trackLabelState.recordFrameSeen(trackId)
-                val isFrontal = face.landmarks?.isFrontal(0.4f) ?: false
-                if (!trackLabelState.needsEmbeddingThisFrame(trackId, isFrontal)) continue
-                val rect = Rect(face.x, face.y, face.x + face.width, face.y + face.height)
-                if (rect.width() < 16 || rect.height() < 16) continue
-                var crop = Bitmap.createBitmap(
-                    bitmap,
-                    rect.left.coerceIn(0, bitmap.width - 1),
-                    rect.top.coerceIn(0, bitmap.height - 1),
-                    rect.width().coerceIn(1, bitmap.width - rect.left),
-                    rect.height().coerceIn(1, bitmap.height - rect.top)
-                )
-                face.landmarks?.let { lm ->
-                    val aligned = FaceAlignment.alignFaceForRecognition(crop, lm, rect)
-                    if (aligned != crop) {
-                        crop.recycle()
-                        crop = aligned
+                if (trackLabelState.needsRecognition(trackId)) {
+                    recognitionQueue.add(trackId)
+                }
+            }
+            val activeTrackId = recognitionQueue.firstOrNull()
+            if (activeTrackId != null) {
+                val selectedIndex = recognitionInputIndicesByTrackId[activeTrackId]
+                if (selectedIndex == null) {
+                    if (trackLabelState.needsRecognition(activeTrackId)) {
+                        moveRecognitionTrackToBack(activeTrackId)
+                    } else {
+                        recognitionQueue.remove(activeTrackId)
+                    }
+                } else {
+                    val face = faces[selectedIndex]
+                    val isFrontal = face.landmarks?.isFrontal(0.4f) ?: false
+                    if (!trackLabelState.needsEmbeddingThisFrame(activeTrackId, isFrontal)) {
+                        if (trackLabelState.needsRecognition(activeTrackId)) {
+                            moveRecognitionTrackToBack(activeTrackId)
+                        } else {
+                            recognitionQueue.remove(activeTrackId)
+                        }
+                    } else {
+                        val faceRect = Rect(face.x, face.y, face.x + face.width, face.y + face.height)
+                        val cropRect = computeRecognitionCropRect(face, bitmap.width, bitmap.height)
+                        var madeProgress = false
+                        if (cropRect != null) {
+                            val cropWidth = cropRect.right - cropRect.left
+                            val cropHeight = cropRect.bottom - cropRect.top
+                            if (cropWidth >= 16 && cropHeight >= 16) {
+                                var crop = Bitmap.createBitmap(
+                                    bitmap,
+                                    cropRect.left,
+                                    cropRect.top,
+                                    cropWidth,
+                                    cropHeight,
+                                )
+                                face.landmarks?.let { lm ->
+                                    val aligned = FaceAlignment.alignFaceForRecognition(crop, lm, faceRect)
+                                    if (aligned != crop) {
+                                        crop.recycle()
+                                        crop = aligned
+                                    }
+                                }
+                                embeddingExtractor.extractEmbedding(crop)?.let { emb ->
+                                    madeProgress = true
+                                    when (trackLabelState.getLabel(activeTrackId)) {
+                                        null -> trackLabelState.addEmbedding(activeTrackId, emb)
+                                        false -> trackLabelState.recheckFrontal(activeTrackId, emb)
+                                        true -> { }
+                                    }
+                                }
+                                crop.recycle()
+                            }
+                        }
+
+                        if (!trackLabelState.needsRecognition(activeTrackId)) {
+                            recognitionQueue.remove(activeTrackId)
+                        } else if (!madeProgress) {
+                            moveRecognitionTrackToBack(activeTrackId)
+                        }
                     }
                 }
-                embeddingExtractor.extractEmbedding(crop)?.let { emb ->
-                    when (trackLabelState.getLabel(trackId)) {
-                        null -> trackLabelState.addEmbedding(trackId, emb)
-                        false -> trackLabelState.recheckFrontal(trackId, emb)
-                        true -> { }
-                    }
-                }
-                crop.recycle()
             }
         }
 
         val frameExport = if (frameIndex != null) {
             val facesExport = if (activePrivacyMode == PrivacyMode.Avatar) {
-                faces.mapIndexed { idx, face ->
+                faces.mapIndexedNotNull { idx, face ->
+                    if (idx !in tdmmCandidateIndices) return@mapIndexedNotNull null
                     val raw3dmm = raw3dmmList.getOrNull(idx)
                     val trackId = trackingIds.getOrElse(idx) { idx }
                     val isOwner = trackLabelState.getLabel(trackId)
@@ -180,6 +245,62 @@ class FrameProcessor @Inject constructor(
     fun resetSessionState() {
         faceTracker.reset()
         trackLabelState.clear()
+        recognitionQueue.clear()
         clearThreadLocalCache()
+    }
+
+    private fun selectLargestFaceIndices(
+        faces: List<DetectedFace>,
+        maxFaceCount: Int,
+    ): Set<Int> {
+        if (maxFaceCount <= 0 || faces.isEmpty()) return emptySet()
+        if (faces.size <= maxFaceCount) return faces.indices.toSet()
+        return faces.withIndex()
+            .sortedWith(
+                compareByDescending<IndexedValue<DetectedFace>> {
+                    it.value.width.toLong().coerceAtLeast(0L) * it.value.height.toLong().coerceAtLeast(0L)
+                }.thenBy { it.index },
+            )
+            .take(maxFaceCount)
+            .mapTo(linkedSetOf()) { it.index }
+    }
+
+    private fun pruneRecognitionQueue(seenTrackIds: Set<Int>) {
+        val iterator = recognitionQueue.iterator()
+        while (iterator.hasNext()) {
+            val trackId = iterator.next()
+            if (trackId !in seenTrackIds || !trackLabelState.needsRecognition(trackId)) {
+                iterator.remove()
+            }
+        }
+    }
+
+    private fun moveRecognitionTrackToBack(trackId: Int) {
+        if (!recognitionQueue.remove(trackId)) return
+        recognitionQueue.add(trackId)
+    }
+
+    private fun computeRecognitionCropRect(
+        face: DetectedFace,
+        frameWidth: Int,
+        frameHeight: Int,
+    ): RecognitionCropWindow? {
+        if (frameWidth <= 0 || frameHeight <= 0) return null
+
+        val centerX = face.x + (face.width / 2f)
+        val centerY = face.y + (face.height / 2f)
+        val halfWidth = face.width * RECOGNITION_CROP_SCALE / 2f
+        val halfHeight = face.height * RECOGNITION_CROP_SCALE / 2f
+
+        val rawLeft = floor(centerX - halfWidth).toInt()
+        val rawTop = floor(centerY - halfHeight).toInt()
+        val rawRight = ceil(centerX + halfWidth).toInt()
+        val rawBottom = ceil(centerY + halfHeight).toInt()
+
+        val left = rawLeft.coerceIn(0, frameWidth - 1)
+        val top = rawTop.coerceIn(0, frameHeight - 1)
+        val right = rawRight.coerceIn(left + 1, frameWidth)
+        val bottom = rawBottom.coerceIn(top + 1, frameHeight)
+        return RecognitionCropWindow(left, top, right, bottom)
     }
 }
