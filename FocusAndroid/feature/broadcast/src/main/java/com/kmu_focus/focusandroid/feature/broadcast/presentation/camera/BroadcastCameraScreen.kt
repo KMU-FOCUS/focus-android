@@ -51,6 +51,7 @@ import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPalette
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
 import com.kmu_focus.focusandroid.core.grpc.data.repository.GrpcMetadataRepositoryImpl
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
+import com.kmu_focus.focusandroid.feature.broadcast.domain.config.BroadcastSrtInputProfile
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.StreamingPlatformConnection
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.displayTitle
@@ -65,8 +66,6 @@ import dagger.hilt.components.SingletonComponent
 import java.io.File
 import kotlinx.coroutines.delay
 
-private const val DEFAULT_BROADCAST_WIDTH = 1280
-private const val DEFAULT_BROADCAST_HEIGHT = 720
 private const val BROADCAST_START_DELAY_MS = 2_000L
 private const val RECORDING_START_TIMEOUT_MS = 5_000L
 private const val START_API_TIMEOUT_MS = 12_000L
@@ -139,11 +138,12 @@ fun BroadcastCameraScreen(
 
         hasStartedRecorder = true
         cameraViewModel.startBroadcastRecording(
-            width = DEFAULT_BROADCAST_WIDTH,
-            height = DEFAULT_BROADCAST_HEIGHT,
+            width = BroadcastSrtInputProfile.WIDTH,
+            height = BroadcastSrtInputProfile.HEIGHT,
             muxerFactory = srtMuxerFactory,
             metadataRepository = metadataRepository,
             sessionId = uiState.broadcastId,
+            encoderConfig = BroadcastSrtInputProfile.encoderConfig,
         )
     }
 

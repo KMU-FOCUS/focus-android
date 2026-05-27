@@ -2,6 +2,7 @@ package com.kmu_focus.focusandroid.feature.camera.data.repository
 
 import com.kmu_focus.focusandroid.core.media.data.local.VideoLocalDataSource
 import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
+import com.kmu_focus.focusandroid.core.media.domain.entity.EncoderConfig
 import com.kmu_focus.focusandroid.feature.camera.data.audio.MicAudioSource
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraRecordingRepository
 import java.io.File
@@ -45,6 +46,7 @@ class CameraRecordingRepositoryImpl @Inject constructor(
         height: Int,
         muxerFactory: Any,
         onSurfaceReady: (Any, Int, Int) -> Unit,
+        encoderConfig: EncoderConfig?,
     ) {
         val outputFile = videoLocalDataSource.createTempOutputFile()
         val micAudioSource = micAudioSourceProvider.get()
@@ -56,6 +58,9 @@ class CameraRecordingRepositoryImpl @Inject constructor(
                 width = width,
                 height = height,
                 outputFile = outputFile,
+                bitRate = encoderConfig?.bitrate,
+                frameRate = encoderConfig?.frameRate ?: DEFAULT_FRAME_RATE,
+                iFrameIntervalSec = encoderConfig?.iFrameIntervalSec,
                 audioTrackSource = micAudioSource,
                 onInputSurfaceReady = { surface ->
                     onSurfaceReady(surface, width, height)
@@ -70,5 +75,9 @@ class CameraRecordingRepositoryImpl @Inject constructor(
 
     override fun stopRecording() {
         realTimeRecorder.stop()
+    }
+
+    private companion object {
+        private const val DEFAULT_FRAME_RATE = 30
     }
 }

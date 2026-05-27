@@ -1,5 +1,6 @@
 package com.kmu_focus.focusandroid.feature.camera.domain.usecase
 
+import com.kmu_focus.focusandroid.core.media.domain.entity.EncoderConfig
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraRecordingRepository
 import io.mockk.every
 import io.mockk.mockk
@@ -68,6 +69,44 @@ class CameraRecordingUseCaseTest {
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is RuntimeException)
+    }
+
+    @Test
+    fun `startBroadcastRecording 호출 시 encoderConfig를 repository에 전달한다`() {
+        val muxerFactory = Any()
+        val encoderConfig = EncoderConfig(
+            bitrate = 5_000_000,
+            frameRate = 30,
+            iFrameIntervalSec = 1,
+        )
+        every {
+            repository.startBroadcastRecording(
+                width = 1280,
+                height = 720,
+                muxerFactory = muxerFactory,
+                onSurfaceReady = any(),
+                encoderConfig = encoderConfig,
+            )
+        } returns Unit
+
+        val result = useCase.startBroadcastRecording(
+            width = 1280,
+            height = 720,
+            muxerFactory = muxerFactory,
+            onSurfaceReady = { _, _, _ -> },
+            encoderConfig = encoderConfig,
+        )
+
+        assertTrue(result.isSuccess)
+        verify(exactly = 1) {
+            repository.startBroadcastRecording(
+                width = 1280,
+                height = 720,
+                muxerFactory = muxerFactory,
+                onSurfaceReady = any(),
+                encoderConfig = encoderConfig,
+            )
+        }
     }
 
     // --- stopRecording 테스트 ---

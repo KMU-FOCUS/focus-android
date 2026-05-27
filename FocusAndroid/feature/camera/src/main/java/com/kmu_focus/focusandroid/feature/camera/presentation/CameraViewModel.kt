@@ -8,6 +8,7 @@ import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraAnalysisUseCase
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraRecordingUseCase
 import com.kmu_focus.focusandroid.core.media.di.IoDispatcher
+import com.kmu_focus.focusandroid.core.media.domain.entity.EncoderConfig
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
@@ -253,6 +254,7 @@ class CameraViewModel @Inject constructor(
         muxerFactory: Any,
         metadataRepository: MetadataRepository,
         sessionId: String,
+        encoderConfig: EncoderConfig? = null,
     ) {
         val currentState = _uiState.value
         if (!currentState.isCameraActive || !currentState.isDetecting || currentState.isRecording) return
@@ -267,6 +269,7 @@ class CameraViewModel @Inject constructor(
                 width = width,
                 height = height,
                 muxerFactory = muxerFactory,
+                encoderConfig = encoderConfig,
                 onSurfaceReady = { encoderSurface, targetWidth, targetHeight ->
                     currentEncoderSurface = encoderSurface as? Surface
                     currentEncoderWidth = targetWidth

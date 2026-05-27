@@ -86,6 +86,43 @@ class RealTimeRecorderTest {
         assertTrue(recorder.isRecording)
     }
 
+    @Test
+    fun `start forwards explicit bitrate frame rate and i frame interval to encoder`() {
+        val output = File("/tmp/out.mp4")
+        val fakeSurface = mockk<Surface>()
+        every {
+            encoderFactory.create(
+                width = any(),
+                height = any(),
+                bitRate = any(),
+                frameRate = any(),
+                iFrameIntervalSec = any(),
+            )
+        } returns encoder
+        every { muxerFactory.create(output) } returns muxer
+        every { encoder.createInputSurface() } returns fakeSurface
+
+        recorder.start(
+            width = 1280,
+            height = 720,
+            outputFile = output,
+            bitRate = 5_000_000,
+            frameRate = 30,
+            iFrameIntervalSec = 1,
+            onInputSurfaceReady = {},
+        )
+
+        verify(exactly = 1) {
+            encoderFactory.create(
+                width = 1280,
+                height = 720,
+                bitRate = 5_000_000,
+                frameRate = 30,
+                iFrameIntervalSec = 1,
+            )
+        }
+    }
+
     @Test(expected = IllegalStateException::class)
     fun `start twice throws IllegalStateException`() {
         val output = File("/tmp/out.mp4")

@@ -96,6 +96,7 @@ class RealTimeRecorder(
      * @param height 인코딩 해상도 (픽셀)
      * @param bitRate 원본 비트레이트 (bps). null이면 해상도 기반 기본값 계산
      * @param frameRate 목표 프레임레이트 (fps)
+     * @param iFrameIntervalSec 키프레임 간격 (초). null이면 기본값 사용
      * @param outputFile 출력 MP4 파일
      * @param audioTrackSource 원본 오디오 sample 공급자 (nullable)
      * @param audioStartPositionUs 오디오 seek 시작 위치 (us)
@@ -108,6 +109,7 @@ class RealTimeRecorder(
         outputFile: File,
         bitRate: Int? = null,
         frameRate: Int = DEFAULT_FRAME_RATE,
+        iFrameIntervalSec: Int? = null,
         audioTrackSource: AudioTrackSource? = null,
         audioStartPositionUs: Long = 0L,
         onInputSurfaceReady: (Surface) -> Unit,
@@ -121,12 +123,15 @@ class RealTimeRecorder(
             frameRate = frameRate,
             sourceBitrate = bitRate,
         )
+        val resolvedIFrameIntervalSec = iFrameIntervalSec
+            ?.coerceAtLeast(MIN_I_FRAME_INTERVAL_SEC)
+            ?: encoderConfig.iFrameIntervalSec
         val encoder = encoderFactory.create(
             width = width,
             height = height,
             bitRate = encoderConfig.bitrate,
             frameRate = encoderConfig.frameRate,
-            iFrameIntervalSec = encoderConfig.iFrameIntervalSec,
+            iFrameIntervalSec = resolvedIFrameIntervalSec,
         )
         val muxer = muxerFactory.create(outputFile)
 
@@ -659,6 +664,7 @@ class RealTimeRecorder(
 
     companion object {
         private const val DEFAULT_FRAME_RATE = 30
+        private const val MIN_I_FRAME_INTERVAL_SEC = 1
         private const val DEQUEUE_TIMEOUT_US = 10_000L
         private const val DRAIN_JOIN_TIMEOUT_MS = 2_000L
         private const val MAX_TRY_AGAIN_AFTER_STOP = 240

@@ -1,5 +1,6 @@
 package com.kmu_focus.focusandroid.feature.camera.domain.usecase
 
+import com.kmu_focus.focusandroid.core.media.domain.entity.EncoderConfig
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraRecordingRepository
 import java.io.File
 import javax.inject.Inject
@@ -24,12 +25,14 @@ class CameraRecordingUseCase @Inject constructor(
         height: Int,
         muxerFactory: Any,
         onSurfaceReady: (Any, Int, Int) -> Unit,
+        encoderConfig: EncoderConfig? = null,
     ): Result<Unit> = runCatching {
         cameraRecordingRepository.startBroadcastRecording(
             width = width,
             height = height,
             muxerFactory = muxerFactory,
             onSurfaceReady = onSurfaceReady,
+            encoderConfig = encoderConfig,
         )
     }
 
