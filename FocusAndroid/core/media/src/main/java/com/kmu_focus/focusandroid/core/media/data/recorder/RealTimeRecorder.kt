@@ -80,6 +80,16 @@ class RealTimeRecorder(
     var onVideoPtsBaseSet: ((baseUs: Long) -> Unit)? = null
 
     /**
+     * 비디오 sample이 muxer/SRT로 실제 기록된 뒤 호출.
+     * metadata는 이 콜백의 rebased PTS만 사용해야 영상에 없는 frame metadata가 전송되지 않는다.
+     *
+     * @param rawPtsUs encoder output 원본 PTS. SurfaceTexture timestamp / 1000 기준.
+     * @param rebasedPtsUs muxer에 기록된 0-based PTS.
+     */
+    @Volatile
+    var onVideoSampleWritten: ((rawPtsUs: Long, rebasedPtsUs: Long) -> Unit)? = null
+
+    /**
      * 비디오 인코더 + Muxer를 초기화하고, 인코더 입력 Surface를 콜백으로 전달한다.
      *
      * @param width 인코딩 해상도 (픽셀)
@@ -251,16 +261,19 @@ class RealTimeRecorder(
                         }
 
                         if (bufferInfo.size > 0 && muxerStarted && videoTrackIndex >= 0) {
+                            val rawVideoPtsUs = bufferInfo.presentationTimeUs
                             if (videoPtsBaseUs == Long.MIN_VALUE) {
-                                videoPtsBaseUs = bufferInfo.presentationTimeUs
+                                videoPtsBaseUs = rawVideoPtsUs
                                 runCatching { onVideoPtsBaseSet?.invoke(videoPtsBaseUs) }
                                     .onFailure { Log.w(loggerTag, "onVideoPtsBaseSet 콜백 실패", it) }
                             }
-                            val rebasedVideoPtsUs = (bufferInfo.presentationTimeUs - videoPtsBaseUs).coerceAtLeast(0L)
+                            val rebasedVideoPtsUs = (rawVideoPtsUs - videoPtsBaseUs).coerceAtLeast(0L)
                             encodedData.position(bufferInfo.offset)
                             encodedData.limit(bufferInfo.offset + bufferInfo.size)
                             bufferInfo.presentationTimeUs = rebasedVideoPtsUs
                             muxer.writeSampleData(videoTrackIndex, encodedData, bufferInfo)
+                            runCatching { onVideoSampleWritten?.invoke(rawVideoPtsUs, rebasedVideoPtsUs) }
+                                .onFailure { Log.w(loggerTag, "onVideoSampleWritten 콜백 실패", it) }
                             currentRecordingSampleCount++
                             lastVideoPtsUs = rebasedVideoPtsUs
                             drainAudioSamplesUpTo(rebasedVideoPtsUs)

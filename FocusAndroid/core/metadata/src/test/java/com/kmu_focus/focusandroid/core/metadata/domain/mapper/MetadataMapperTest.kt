@@ -188,4 +188,22 @@ class MetadataMapperTest {
         assertEquals(56, bbox.width)
         assertEquals(78, bbox.height)
     }
+
+    @Test
+    fun `bbox 기준 frame geometry를 metadata에 포함한다`() {
+        val frame = MetadataMapper.mapFrame(
+            sessionId = "session-1",
+            timestampSeconds = 0.5,
+            faces = emptyList(),
+            frameWidth = 1280,
+            frameHeight = 720,
+            rotation = 450,
+            mirrored = true,
+        )
+
+        assertEquals(1280, frame.frameWidth)
+        assertEquals(720, frame.frameHeight)
+        assertEquals(90, frame.rotation)
+        assertTrue(frame.mirrored)
+    }
 }

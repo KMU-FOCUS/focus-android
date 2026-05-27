@@ -1,12 +1,16 @@
 package com.kmu_focus.focusandroid.core.grpc.data.remote
 
+import android.util.Log
 import com.kmu_focus.focusandroid.core.grpc.proto.FaceMetadataIngestServiceGrpc
 import com.kmu_focus.focusandroid.core.grpc.proto.PushFaceMetadataRequest
 import com.kmu_focus.focusandroid.core.grpc.proto.PushFaceMetadataResponse
 import io.grpc.stub.StreamObserver
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import io.mockk.verify
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -22,6 +26,10 @@ class FaceMetadataStreamManagerTest {
 
     @Before
     fun setup() {
+        mockkStatic(Log::class)
+        every { Log.i(any(), any()) } returns 0
+        every { Log.e(any(), any<String>(), any()) } returns 0
+
         asyncStub = mockk()
         requestObserver1 = mockk(relaxed = true)
         requestObserver2 = mockk(relaxed = true)
@@ -34,6 +42,11 @@ class FaceMetadataStreamManagerTest {
         )
 
         manager = FaceMetadataStreamManager(asyncStub)
+    }
+
+    @After
+    fun tearDown() {
+        unmockkStatic(Log::class)
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.kmu_focus.focusandroid.core.ai.data.recognition.FaceAlignment
 import com.kmu_focus.focusandroid.core.ai.domain.detector.recognition.OwnerAdder
 import com.kmu_focus.focusandroid.core.ai.domain.detector.recognition.TrackLabelState
 import com.kmu_focus.focusandroid.core.metadata.data.local.JsonMetadataRepository
+import com.kmu_focus.focusandroid.core.metadata.domain.entity.FrameMetadata
 import com.kmu_focus.focusandroid.core.metadata.domain.mapper.MetadataMapper
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.OwnerRegistrationResult
@@ -62,6 +63,15 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         val frameTimestampUs: Long,
     )
 
+    private data class MetadataDispatchContext(
+        val sessionId: String,
+        val coordinateSpace: MetadataMapper.CoordinateSpace?,
+        val frameWidth: Int,
+        val frameHeight: Int,
+        val rotation: Int = 0,
+        val mirrored: Boolean = false,
+    )
+
     private val metadataScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val metadataJobs = mutableSetOf<Job>()
     private val metadataEnqueuedCount = AtomicLong(0L)
@@ -70,7 +80,10 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
     private val metadataJobsLock = Any()
     private val metadataStateLock = Any()
     private val pendingMetadataLock = Any()
-    private val pendingMetadataFrames = ArrayDeque<PendingMetadataFrame>()
+    private val liveMetadataLock = Any()
+    private val pendingMetadataFrames = LinkedHashMap<Long, PendingMetadataFrame>()
+    private var pendingLiveMetadata: FrameMetadata? = null
+    private var liveMetadataSenderJob: Job? = null
     private var metadataRepository: MetadataRepository? = null
     private var metadataSessionId: String? = null
     private var metadataEnabled = false
@@ -88,6 +101,12 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
 
     init {
         realTimeRecorder.onVideoPtsBaseSet = { baseUs -> setEncoderPtsBaseUs(baseUs) }
+        realTimeRecorder.onVideoSampleWritten = { rawPtsUs, rebasedPtsUs ->
+            onVideoSampleWritten(
+                rawPtsUs = rawPtsUs,
+                rebasedPtsUs = rebasedPtsUs,
+            )
+        }
     }
 
     override fun setPrivacyMode(mode: PrivacyMode) {
@@ -279,6 +298,10 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         synchronized(pendingMetadataLock) {
             pendingMetadataFrames.clear()
         }
+        synchronized(liveMetadataLock) {
+            pendingLiveMetadata = null
+            liveMetadataSenderJob = null
+        }
         metadataEnqueuedCount.set(0L)
         metadataDroppedBeforeBaseCount.set(0L)
         metadataDroppedPendingOverflowCount.set(0L)
@@ -367,49 +390,73 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         synchronized(metadataStateLock) {
             encoderPtsBaseUs = baseUs
         }
+        val droppedBeforeBase = dropPendingMetadataBefore(baseUs)
         val pendingSize = synchronized(pendingMetadataLock) { pendingMetadataFrames.size }
         Log.i(
             TAG,
             "setEncoderPtsBaseUs base=$baseUs bufferedBeforeBase=${metadataDroppedBeforeBaseCount.get()} " +
-                "pending=$pendingSize overflowDropped=${metadataDroppedPendingOverflowCount.get()}",
+                "pending=$pendingSize droppedBeforeBase=$droppedBeforeBase " +
+                "overflowDropped=${metadataDroppedPendingOverflowCount.get()}",
         )
-        // 콜백 시점에는 다른 thread (encoder drain) 일 수 있으므로 즉시 flush 하지 않고,
-        // 다음 enqueueMetadataFrame 호출 (GL/분석 thread) 에서 처리하도록 유지한다.
+        // metadata는 base 확정만으로 전송하지 않는다.
+        // 실제 비디오 sample write 콜백이 온 PTS만 전송해야 영상에 없는 metadata가 생기지 않는다.
     }
 
     private fun enqueueMetadataFrame(frame: ProcessedFrame, frameTimestampUs: Long) {
         if (frame.frameExport == null) return
+        bufferPendingMetadataFrame(frame, frameTimestampUs)
+    }
 
-        // base 가 아직 안 잡혔으면 drop 하지 않고 작은 버퍼에 보류 → base 확정 시 일괄 flush.
-        val baseUsSnapshot = synchronized(metadataStateLock) { encoderPtsBaseUs }
-        if (baseUsSnapshot == UNSET_PTS_BASE_US) {
-            bufferPendingMetadataFrame(frame, frameTimestampUs)
+    internal fun onVideoSampleWritten(
+        rawPtsUs: Long,
+        rebasedPtsUs: Long,
+    ) {
+        if (rawPtsUs < 0L || rebasedPtsUs < 0L) return
+        val isMetadataEnabled = synchronized(metadataStateLock) { metadataEnabled }
+        if (!isMetadataEnabled) return
+
+        val pending = takePendingMetadataForSample(rawPtsUs)
+        if (pending == null) {
+            Log.w(
+                TAG,
+                "video sample has no matching metadata rawPtsUs=$rawPtsUs rebasedPtsUs=$rebasedPtsUs " +
+                    "pending=${synchronized(pendingMetadataLock) { pendingMetadataFrames.size }}",
+            )
             return
         }
-
-        // base 가 잡힌 직후 처음 들어온 frame 에서 보류분 먼저 흘려보내야 순서/슬롯 allocator 일관성 유지.
-        flushPendingMetadataFrames(baseUsSnapshot)
-        dispatchMetadataFrame(frame, frameTimestampUs, baseUsSnapshot)
+        dispatchMetadataFrame(
+            frame = pending.processedFrame,
+            frameTimestampUs = rawPtsUs,
+            metadataPtsUs = rebasedPtsUs,
+        )
     }
 
     private fun bufferPendingMetadataFrame(frame: ProcessedFrame, frameTimestampUs: Long) {
+        val baseUsSnapshot = synchronized(metadataStateLock) { encoderPtsBaseUs }
         val overflowed = synchronized(pendingMetadataLock) {
-            pendingMetadataFrames.addLast(PendingMetadataFrame(frame, frameTimestampUs))
-            if (pendingMetadataFrames.size > MAX_PENDING_METADATA_FRAMES) {
-                pendingMetadataFrames.removeFirst()
-                true
-            } else {
-                false
+            pendingMetadataFrames[frameTimestampUs] = PendingMetadataFrame(frame, frameTimestampUs)
+            var dropped = false
+            while (pendingMetadataFrames.size > MAX_PENDING_METADATA_FRAMES) {
+                val iterator = pendingMetadataFrames.entries.iterator()
+                if (!iterator.hasNext()) break
+                iterator.next()
+                iterator.remove()
+                dropped = true
             }
+            dropped
         }
-        val buffered = metadataDroppedBeforeBaseCount.incrementAndGet()
+        val buffered = if (baseUsSnapshot == UNSET_PTS_BASE_US) {
+            metadataDroppedBeforeBaseCount.incrementAndGet()
+        } else {
+            metadataDroppedBeforeBaseCount.get()
+        }
         if (overflowed) {
             val dropped = metadataDroppedPendingOverflowCount.incrementAndGet()
             if (dropped == 1L || dropped % 30L == 0L) {
                 Log.w(TAG, "pendingMetadata overflow drop #$dropped (cap=$MAX_PENDING_METADATA_FRAMES)")
             }
         }
-        if (buffered == 1L || buffered % 30L == 0L) {
+        if (baseUsSnapshot == UNSET_PTS_BASE_US && (buffered == 1L || buffered % 30L == 0L)) {
             Log.w(
                 TAG,
                 "bufferMetadata before encoder pts base #$buffered " +
@@ -418,28 +465,45 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun flushPendingMetadataFrames(baseUs: Long) {
-        if (baseUs == UNSET_PTS_BASE_US) return
-        var flushed = 0
-        while (true) {
-            val pending = synchronized(pendingMetadataLock) {
-                if (pendingMetadataFrames.isEmpty()) null else pendingMetadataFrames.removeFirst()
-            } ?: break
-            dispatchMetadataFrame(pending.processedFrame, pending.frameTimestampUs, baseUs)
-            flushed++
+    private fun takePendingMetadataForSample(rawPtsUs: Long): PendingMetadataFrame? {
+        return synchronized(pendingMetadataLock) {
+            val iterator = pendingMetadataFrames.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (entry.key >= rawPtsUs) {
+                    break
+                }
+                iterator.remove()
+            }
+            pendingMetadataFrames.remove(rawPtsUs)
         }
-        if (flushed > 0) {
-            Log.i(TAG, "flushPendingMetadata count=$flushed baseUs=$baseUs")
+    }
+
+    private fun dropPendingMetadataBefore(rawPtsUs: Long): Int {
+        var dropped = 0
+        synchronized(pendingMetadataLock) {
+            val iterator = pendingMetadataFrames.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (entry.key >= rawPtsUs) {
+                    break
+                }
+                iterator.remove()
+                dropped++
+            }
         }
+        return dropped
     }
 
     private fun dispatchMetadataFrame(
         frame: ProcessedFrame,
         frameTimestampUs: Long,
-        baseUs: Long,
+        metadataPtsUs: Long,
     ) {
+        if (metadataPtsUs < 0L) return
         val frameExport = frame.frameExport ?: return
-        val (sessionId, coordinateSpace) = synchronized(metadataStateLock) {
+        val ptsBaseUs = frameTimestampUs - metadataPtsUs
+        val dispatchContext = synchronized(metadataStateLock) {
             val resolvedSessionId = metadataSessionId
                 ?: UUID.randomUUID().toString().also { metadataSessionId = it }
             val activeSourceWidth = if (broadcastSourceWidth > 0) broadcastSourceWidth else sourceFrameWidth
@@ -450,7 +514,12 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
                 sourceWidth = activeSourceWidth,
                 sourceHeight = activeSourceHeight,
             ).takeIf(MetadataMapper.CoordinateSpace::isValid)
-            resolvedSessionId to resolvedCoordinateSpace
+            MetadataDispatchContext(
+                sessionId = resolvedSessionId,
+                coordinateSpace = resolvedCoordinateSpace,
+                frameWidth = activeSourceWidth,
+                frameHeight = activeSourceHeight,
+            )
         }
 
         val dropStats = MetadataMapper.DropStats()
@@ -486,11 +555,15 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         val faceCapDroppedCount =
             facePayloads.count { it.isOwner == false } - limitedFacePayloads.count { it.isOwner == false }
         val metadata = MetadataMapper.mapFrame(
-            sessionId = sessionId,
+            sessionId = dispatchContext.sessionId,
             timestampSeconds = frameExport.timestamp,
             faces = remappedFacePayloads,
-            coordinateSpace = coordinateSpace,
-            ptsBaseUs = baseUs,
+            coordinateSpace = dispatchContext.coordinateSpace,
+            ptsBaseUs = ptsBaseUs,
+            frameWidth = dispatchContext.frameWidth,
+            frameHeight = dispatchContext.frameHeight,
+            rotation = dispatchContext.rotation,
+            mirrored = dispatchContext.mirrored,
             overrideTimestampUs = frameTimestampUs,
             dropStats = dropStats,
         )
@@ -503,8 +576,8 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             val activeSrcH = if (broadcastSourceHeight > 0) broadcastSourceHeight else sourceFrameHeight
             Log.i(
                 TAG,
-                "enqueueMetadata #$enqueued session=$sessionId pts_us=${metadata.ptsUs} " +
-                    "rawUs=$frameTimestampUs base=$baseUs delta=${frameTimestampUs - baseUs} " +
+                "enqueueMetadata #$enqueued session=${dispatchContext.sessionId} pts_us=${metadata.ptsUs} " +
+                    "rawUs=$frameTimestampUs base=$ptsBaseUs delta=${metadata.ptsUs} " +
                     "rawFaces=${frameExport.faces.size} sendFaces=${metadata.faces.size} " +
                     "faceCapDropped=$faceCapDroppedCount " +
                     "drop[$dropStats rawCoeffNull=$rawCoeffNullCount] " +
@@ -520,13 +593,46 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             launchMetadataJob { dumpRepo.sendFrame(metadata) }
         }
 
-        launchMetadataJob {
-            val repo = synchronized(metadataStateLock) {
-                metadataRepository ?: metadataRepositoryProvider.get().also {
-                    metadataRepository = it
-                }
+        enqueueLiveMetadataFrame(metadata)
+    }
+
+    private fun enqueueLiveMetadataFrame(metadata: FrameMetadata) {
+        val jobToTrack = synchronized(liveMetadataLock) {
+            if (liveMetadataSenderJob?.isActive == true) {
+                pendingLiveMetadata = metadata
+                null
+            } else {
+                pendingLiveMetadata = null
+                metadataScope.launch { drainLiveMetadataFrames(firstMetadata = metadata) }
+                    .also { liveMetadataSenderJob = it }
             }
-            repo.sendFrame(metadata)
+        }
+        jobToTrack?.let(::trackMetadataJob)
+    }
+
+    private suspend fun drainLiveMetadataFrames(firstMetadata: FrameMetadata) {
+        var nextMetadata: FrameMetadata? = firstMetadata
+        while (true) {
+            val metadata = nextMetadata ?: synchronized(liveMetadataLock) {
+                val pending = pendingLiveMetadata
+                if (pending == null) {
+                    liveMetadataSenderJob = null
+                    return
+                }
+                pendingLiveMetadata = null
+                pending
+            }
+            nextMetadata = null
+            runCatching {
+                val repo = synchronized(metadataStateLock) {
+                    metadataRepository ?: metadataRepositoryProvider.get().also {
+                        metadataRepository = it
+                    }
+                }
+                repo.sendFrame(metadata)
+            }.onFailure { throwable ->
+                Log.e(TAG, "metadata sendFrame failed", throwable)
+            }
         }
     }
 
@@ -536,6 +642,10 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
                 Log.e(TAG, "metadata sendFrame failed", throwable)
             }
         }
+        trackMetadataJob(job)
+    }
+
+    private fun trackMetadataJob(job: Job) {
         synchronized(metadataJobsLock) {
             metadataJobs += job
         }

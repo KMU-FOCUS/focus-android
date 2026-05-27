@@ -4,8 +4,10 @@ import com.kmu_focus.focusandroid.core.metadata.domain.entity.BBox
 import com.kmu_focus.focusandroid.core.metadata.domain.entity.FaceData
 import com.kmu_focus.focusandroid.core.metadata.domain.entity.FrameMetadata
 import com.kmu_focus.focusandroid.core.metadata.domain.entity.ThreeDMM
+import com.kmu_focus.focusandroid.core.grpc.proto.PushFaceMetadataRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GrpcMetadataMapperTest {
@@ -34,6 +36,36 @@ class GrpcMetadataMapperTest {
         val proto = GrpcMetadataMapper.toProto(metadata)
 
         assertEquals(133_333L, proto.ptsUs)
+    }
+
+    @Test
+    fun `PushFaceMetadataRequest는 bbox 기준 frame geometry 필드를 제공한다`() {
+        val methods = PushFaceMetadataRequest::class.java.methods.map { it.name }.toSet()
+
+        assertTrue(methods.contains("getFrameWidth"))
+        assertTrue(methods.contains("getFrameHeight"))
+        assertTrue(methods.contains("getRotation"))
+        assertTrue(methods.contains("getMirrored"))
+    }
+
+    @Test
+    fun `FrameMetadata의 frame geometry가 proto에 매핑된다`() {
+        val metadata = FrameMetadata(
+            sessionId = "broadcast-123",
+            ptsUs = 133_333L,
+            faces = emptyList(),
+            frameWidth = 1280,
+            frameHeight = 720,
+            rotation = 90,
+            mirrored = true,
+        )
+
+        val proto = GrpcMetadataMapper.toProto(metadata)
+
+        assertEquals(1280, proto.frameWidth)
+        assertEquals(720, proto.frameHeight)
+        assertEquals(90, proto.rotation)
+        assertTrue(proto.mirrored)
     }
 
     @Test

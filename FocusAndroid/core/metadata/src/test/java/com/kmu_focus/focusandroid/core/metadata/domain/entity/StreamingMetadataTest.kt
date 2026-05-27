@@ -40,6 +40,16 @@ class StreamingMetadataTest {
     }
 
     @Test
+    fun `FrameMetadata는 bbox 기준 frame geometry를 포함한다`() {
+        val fields = FrameMetadata::class.java.declaredFields.map { it.name }.toSet()
+
+        assertTrue(fields.contains("frameWidth"))
+        assertTrue(fields.contains("frameHeight"))
+        assertTrue(fields.contains("rotation"))
+        assertTrue(fields.contains("mirrored"))
+    }
+
+    @Test
     fun `BBox 좌표가 정확히 저장된다`() {
         val bbox = BBox(x = 100, y = 200, width = 50, height = 60)
 

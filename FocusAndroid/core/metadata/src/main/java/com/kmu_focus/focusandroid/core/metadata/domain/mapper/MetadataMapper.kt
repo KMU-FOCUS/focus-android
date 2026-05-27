@@ -54,6 +54,10 @@ object MetadataMapper {
         faces: List<FaceExportPayload>,
         coordinateSpace: CoordinateSpace? = null,
         ptsBaseUs: Long = 0L,
+        frameWidth: Int = 0,
+        frameHeight: Int = 0,
+        rotation: Int = 0,
+        mirrored: Boolean = false,
         /**
          * 인코더 PTS와 동일 nano 타임라인의 frame timestamp(microseconds).
          * 지정 시 timestampSeconds 대신 사용. millisecond 정밀도로는 base 와의 차이가
@@ -134,6 +138,10 @@ object MetadataMapper {
             sessionId = sessionId,
             ptsUs = ptsUs,
             faces = mappedFaces,
+            frameWidth = frameWidth.coerceAtLeast(0),
+            frameHeight = frameHeight.coerceAtLeast(0),
+            rotation = normalizeRotation(rotation),
+            mirrored = mirrored,
         )
     }
 
@@ -144,6 +152,11 @@ object MetadataMapper {
     private const val FACEMAP_POSE_DIM = 6
     private const val FACEMAP_EXTRA_DIM = 1
     private val logger: Logger = Logger.getLogger(MetadataMapper::class.java.name)
+
+    private fun normalizeRotation(rotation: Int): Int {
+        val normalized = rotation % 360
+        return if (normalized < 0) normalized + 360 else normalized
+    }
 
     private fun concatCoeffs(
         idCoeffs: FloatArray,

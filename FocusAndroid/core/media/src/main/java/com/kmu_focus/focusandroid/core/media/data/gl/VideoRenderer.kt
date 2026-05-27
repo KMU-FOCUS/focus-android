@@ -44,8 +44,8 @@ private const val PRIVACY_MASK_DEFAULT_B = 0.58f
  */
 class VideoRenderer(
     /**
-     * 분석 콜백. SurfaceTexture frame 의 native timestamp(nanoseconds, elapsedRealtimeNanos 기준)도 함께 전달한다.
-     * 인코더 PTS와 동일 타임라인이므로 metadata pts_us 를 정확히 동기화할 때 사용.
+     * 분석 콜백. 녹화 중에는 실제 인코더에 제출할 microsecond 정렬 timestamp(nanoseconds)를 전달한다.
+     * metadata pts_us 는 이 값과 encoder output sample 콜백을 함께 사용해 영상 sample과 동기화한다.
      */
     private val onFrameCaptured: (ByteBuffer, Int, Int, Long) -> ProcessedFrame,
     private val onSurfaceReady: (Surface) -> Unit,
@@ -342,12 +342,17 @@ class VideoRenderer(
             // 분석/인코더 모두 동일 timestamp(=pendingAnalysisFrameTimestampNs) 를 박아야 한다.
             val analysisFrameTimestampNs = pendingAnalysisFrameTimestampNs
             val analysisBuffer = pboReader.readPixelsAsync()
+            val submittedFrameTimestampNs = if (recordingEnabled && analysisBuffer != null) {
+                resolveNextEncoderTimestampNs(analysisFrameTimestampNs)
+            } else {
+                analysisFrameTimestampNs
+            }
             if (analysisBuffer != null && (recordingEnabled || shouldAnalyzeFrame(frameTimestampNs))) {
                 processedFrame = onFrameCaptured(
                     analysisBuffer,
                     viewWidth,
                     viewHeight,
-                    analysisFrameTimestampNs,
+                    submittedFrameTimestampNs,
                 )
                 lastAnalysisTimestampNs = resolveAnalysisTimestampNs(frameTimestampNs)
             }
@@ -407,7 +412,7 @@ class VideoRenderer(
             if (shouldSubmitFrameForRecording(recordingEnabled, processedFrame) && encoderTextureIdForSubmit != 0) {
                 submitFrameToEncoderThread(
                     textureId = encoderTextureIdForSubmit,
-                    frameTimestampNs = analysisFrameTimestampNs,
+                    frameTimestampNs = submittedFrameTimestampNs,
                 )
             }
         }
@@ -470,16 +475,11 @@ class VideoRenderer(
             return
         }
 
-        // SurfaceTexture.timestamp 는 elapsedRealtimeNanos 타임라인이므로, fallback 도 동일 clock 사용.
-        // System.nanoTime() 은 CLOCK_MONOTONIC (suspend 제외) 으로 timeline 이 달라 metadata 와 어긋날 수 있음.
-        val baseTimestampNs =
-            if (frameTimestampNs > 0L) frameTimestampNs else SystemClock.elapsedRealtimeNanos()
-        val timestampNs = if (lastEncoderTimestampNs == Long.MIN_VALUE) {
-            baseTimestampNs
+        val timestampNs = if (frameTimestampNs > 0L) {
+            frameTimestampNs
         } else {
-            maxOf(baseTimestampNs, lastEncoderTimestampNs + 1_000L)
+            alignTimestampNsToMicrosecond(SystemClock.elapsedRealtimeNanos())
         }
-        lastEncoderTimestampNs = timestampNs
 
         val encoderSourceScale = calculateEncoderSourceScale(
             sourceWidth = viewWidth,
@@ -579,6 +579,18 @@ class VideoRenderer(
         } else {
             System.nanoTime()
         }
+    }
+
+    private fun resolveNextEncoderTimestampNs(frameTimestampNs: Long): Long {
+        // SurfaceTexture.timestamp 는 elapsedRealtimeNanos 타임라인이므로, fallback 도 동일 clock 사용.
+        // System.nanoTime() 은 CLOCK_MONOTONIC (suspend 제외) 으로 timeline 이 달라 metadata 와 어긋날 수 있음.
+        val resolved = resolveMonotonicEncoderTimestampNs(
+            frameTimestampNs = frameTimestampNs,
+            lastEncoderTimestampNs = lastEncoderTimestampNs,
+            fallbackTimestampNs = SystemClock.elapsedRealtimeNanos(),
+        )
+        lastEncoderTimestampNs = resolved
+        return resolved
     }
 
     private fun calculateEncoderSourceScale(
@@ -715,6 +727,28 @@ fun hasAnalysisTimestampReset(lastFrameTimestampNs: Long, frameTimestampNs: Long
 
 @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
 fun nextEncoderBufferIndex(currentIndex: Int): Int = 1 - currentIndex
+
+@VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+fun alignTimestampNsToMicrosecond(timestampNs: Long): Long {
+    if (timestampNs <= 0L) return 0L
+    return (timestampNs / 1_000L) * 1_000L
+}
+
+@VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+fun resolveMonotonicEncoderTimestampNs(
+    frameTimestampNs: Long,
+    lastEncoderTimestampNs: Long,
+    fallbackTimestampNs: Long,
+): Long {
+    val baseTimestampNs = if (frameTimestampNs > 0L) frameTimestampNs else fallbackTimestampNs
+    val baseTimestampUs = baseTimestampNs.coerceAtLeast(0L) / 1_000L
+    val resolvedTimestampUs = if (lastEncoderTimestampNs == Long.MIN_VALUE) {
+        baseTimestampUs
+    } else {
+        maxOf(baseTimestampUs, (lastEncoderTimestampNs / 1_000L) + 1L)
+    }
+    return resolvedTimestampUs * 1_000L
+}
 
 @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
 data class PreviewFrameSelection(

@@ -10,7 +10,7 @@ import java.nio.ByteBuffer
 
 class VideoGLSurfaceView(
     context: Context,
-    /** (buffer, width, height, frameTimestampNs(=SurfaceTexture native ts)) -> ProcessedFrame */
+    /** (buffer, width, height, frameTimestampNs(녹화 중에는 encoder 제출 timestamp)) -> ProcessedFrame */
     private val onFrameCaptured: (ByteBuffer, Int, Int, Long) -> ProcessedFrame,
     private val onSurfaceReady: (Surface) -> Unit,
     private val onRendererReleased: (() -> Unit)? = null,

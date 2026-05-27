@@ -11,6 +11,10 @@ object GrpcMetadataMapper {
         return PushFaceMetadataRequest.newBuilder()
             .setSessionId(metadata.sessionId)
             .setPtsUs(metadata.ptsUs)
+            .setFrameWidth(metadata.frameWidth)
+            .setFrameHeight(metadata.frameHeight)
+            .setRotation(metadata.rotation)
+            .setMirrored(metadata.mirrored)
             .addAllFaces(
                 metadata.faces.map { face ->
                     FaceEntry.newBuilder()

@@ -94,6 +94,39 @@ class VideoRendererRecordingPolicyTest {
     }
 
     @Test
+    fun `인코더 timestamp는 microsecond 단위로 정렬된다`() {
+        val resolved = resolveMonotonicEncoderTimestampNs(
+            frameTimestampNs = 1_234_567_890L,
+            lastEncoderTimestampNs = Long.MIN_VALUE,
+            fallbackTimestampNs = 9_000L,
+        )
+
+        assertEquals(1_234_567_000L, resolved)
+    }
+
+    @Test
+    fun `인코더 timestamp는 같은 microsecond가 반복되면 1us 증가한다`() {
+        val resolved = resolveMonotonicEncoderTimestampNs(
+            frameTimestampNs = 1_234_567_999L,
+            lastEncoderTimestampNs = 1_234_567_000L,
+            fallbackTimestampNs = 9_000L,
+        )
+
+        assertEquals(1_234_568_000L, resolved)
+    }
+
+    @Test
+    fun `인코더 timestamp fallback도 microsecond 단위로 정렬된다`() {
+        val resolved = resolveMonotonicEncoderTimestampNs(
+            frameTimestampNs = 0L,
+            lastEncoderTimestampNs = Long.MIN_VALUE,
+            fallbackTimestampNs = 9_876_543L,
+        )
+
+        assertEquals(9_876_000L, resolved)
+    }
+
+    @Test
     fun `프레임 타임스탬프가 뒤로 가면 분석 파이프라인 reset으로 판단한다`() {
         val shouldReset = hasAnalysisTimestampReset(
             lastFrameTimestampNs = 5_000_000_000L,
