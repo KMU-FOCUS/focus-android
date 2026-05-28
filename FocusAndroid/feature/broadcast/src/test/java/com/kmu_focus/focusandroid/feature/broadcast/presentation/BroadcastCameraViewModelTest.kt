@@ -25,6 +25,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -331,6 +332,41 @@ class BroadcastCameraViewModelTest {
     }
 
     @Test
+    fun `분석 처리 중 리포트 닫기 시 analysis polling을 중지한다`() = runTest {
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
+        coEvery { broadcastStreamingUseCase.prepareBroadcastStreaming(any(), any(), any()) } returns Result.success(Unit)
+        coEvery { broadcastStreamingUseCase.confirmBroadcastStarted("broadcast-1") } returns Result.success(
+            preparedBroadcast.copy(status = BroadcastStatus.ON_AIR),
+        )
+        every { broadcastStreamingUseCase.startHeartbeat(eq("broadcast-1"), any()) } returns Job()
+        coEvery { broadcastStreamingUseCase.stopBroadcast("broadcast-1") } returns Result.success(Unit)
+        coEvery { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") } returns Result.success(processingAnalysisResult)
+
+        viewModel = createViewModel()
+
+        viewModel.startBroadcasting()
+        viewModel.confirmBroadcastStarted()
+        viewModel.stopBroadcasting(
+            CompletedBroadcastReportSeed(
+                broadcastId = "broadcast-1",
+                durationSec = 30,
+                ownerCount = 1,
+                recordingFilePath = null,
+            ),
+        )
+
+        assertEquals(BroadcastAnalysisStatus.PROCESSING, viewModel.uiState.value.completedReport?.analysisStatus)
+        coVerify(exactly = 1) { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") }
+
+        viewModel.dismissCompletedReport()
+        advanceTimeBy(ANALYSIS_POLL_INTERVAL_TEST_MS * 3)
+        advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.completedReport)
+        coVerify(exactly = 1) { getLatestBroadcastAnalysisUseCase.invoke("broadcast-1") }
+    }
+
+    @Test
     fun `cancelPreparingBroadcast 호출 시 생성된 방송을 삭제한다`() = runTest {
         coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
         coEvery { broadcastStreamingUseCase.prepareBroadcastStreaming(any(), any(), any()) } returns Result.success(Unit)
@@ -345,5 +381,9 @@ class BroadcastCameraViewModelTest {
         assertEquals("", viewModel.uiState.value.broadcastId)
         assertFalse(viewModel.uiState.value.isPreparing)
         coVerify(exactly = 1) { deleteBroadcastUseCase.invoke("broadcast-1") }
+    }
+
+    private companion object {
+        private const val ANALYSIS_POLL_INTERVAL_TEST_MS = 2_000L
     }
 }

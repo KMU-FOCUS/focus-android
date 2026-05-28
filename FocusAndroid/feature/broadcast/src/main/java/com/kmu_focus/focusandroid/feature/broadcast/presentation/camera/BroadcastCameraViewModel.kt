@@ -64,6 +64,7 @@ class BroadcastCameraViewModel @Inject constructor(
 
     private var heartbeatJob: Job? = null
     private var startBroadcastJob: Job? = null
+    private var postBroadcastReportJob: Job? = null
 
     val currentMuxerFactory: RealTimeRecorder.VideoMuxerFactory?
         get() = broadcastStreamingUseCase.currentMuxerFactory
@@ -230,6 +231,8 @@ class BroadcastCameraViewModel @Inject constructor(
 
         startBroadcastJob?.cancel()
         startBroadcastJob = null
+        postBroadcastReportJob?.cancel()
+        postBroadcastReportJob = null
         heartbeatJob?.cancel()
         heartbeatJob = null
 
@@ -310,7 +313,8 @@ class BroadcastCameraViewModel @Inject constructor(
             )
         }
 
-        viewModelScope.launch {
+        postBroadcastReportJob?.cancel()
+        val reportJob = viewModelScope.launch {
             val seededReport = reportSeed.copy(broadcastId = broadcastId)
             val stopFailure = broadcastStreamingUseCase.stopBroadcast(broadcastId).exceptionOrNull()
             if (stopFailure != null) {
@@ -352,9 +356,17 @@ class BroadcastCameraViewModel @Inject constructor(
                 },
             )
         }
+        postBroadcastReportJob = reportJob
+        reportJob.invokeOnCompletion {
+            if (postBroadcastReportJob === reportJob) {
+                postBroadcastReportJob = null
+            }
+        }
     }
 
     fun dismissCompletedReport() {
+        postBroadcastReportJob?.cancel()
+        postBroadcastReportJob = null
         _uiState.update { current ->
             current.copy(completedReport = null)
         }
@@ -446,6 +458,7 @@ class BroadcastCameraViewModel @Inject constructor(
     override fun onCleared() {
         startBroadcastJob?.cancel()
         heartbeatJob?.cancel()
+        postBroadcastReportJob?.cancel()
         super.onCleared()
     }
 }
