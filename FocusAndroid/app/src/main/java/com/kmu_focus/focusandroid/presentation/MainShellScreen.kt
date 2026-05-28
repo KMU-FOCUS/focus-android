@@ -46,7 +46,7 @@ fun MainShellScreen(
             onDisconnectPlatform = onDisconnectPlatform,
             onRefreshPlatforms = onRefreshPlatforms,
             onRootBack = {
-                activity?.moveTaskToBack(true)
+                activity?.finish()
             },
         )
     }

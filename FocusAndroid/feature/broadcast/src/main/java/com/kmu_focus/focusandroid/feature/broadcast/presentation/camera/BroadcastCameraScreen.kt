@@ -2,6 +2,7 @@ package com.kmu_focus.focusandroid.feature.broadcast.presentation.camera
 
 import android.content.Context
 import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -236,6 +237,10 @@ fun BroadcastCameraScreen(
         viewModel.stopBroadcasting(reportSeed)
     }
 
+    val showBroadcastExitBlockedMessage = {
+        Toast.makeText(context, "방송 중에는 종료할 수 없습니다", Toast.LENGTH_SHORT).show()
+    }
+
     val closeCurrentSession = {
         if (cameraUiState.isRecording) {
             if (uiState.isBroadcasting) {
@@ -258,7 +263,10 @@ fun BroadcastCameraScreen(
                 viewModel.dismissCompletedReport()
             }
             uiState.isStopping -> Unit
-            uiState.isPreparing || uiState.isBroadcasting || cameraUiState.isRecording -> {
+            uiState.isBroadcasting -> {
+                showBroadcastExitBlockedMessage()
+            }
+            uiState.isPreparing || cameraUiState.isRecording -> {
                 closeCurrentSession()
             }
             else -> onRootBack()
@@ -274,10 +282,10 @@ fun BroadcastCameraScreen(
             onRecordingComplete = {},
             modifier = Modifier.fillMaxSize(),
             onBack = {
-                if (uiState.isPreparing || uiState.isBroadcasting || cameraUiState.isRecording) {
-                    closeCurrentSession()
-                } else {
-                    onRootBack()
+                when {
+                    uiState.isBroadcasting -> showBroadcastExitBlockedMessage()
+                    uiState.isPreparing || cameraUiState.isRecording -> closeCurrentSession()
+                    else -> onRootBack()
                 }
             },
             showDetectionControl = false,
