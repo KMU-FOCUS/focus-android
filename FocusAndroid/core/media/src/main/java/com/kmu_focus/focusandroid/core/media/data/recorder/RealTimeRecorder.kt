@@ -529,16 +529,16 @@ class RealTimeRecorder(
             frameRate: Int,
             iFrameIntervalSec: Int,
         ): MediaCodec {
-            val configuredWithVbr = tryConfigureCodec(
+            val configuredWithCbr = tryConfigureCodec(
                 width = width,
                 height = height,
                 bitRate = bitRate,
                 frameRate = frameRate,
                 iFrameIntervalSec = iFrameIntervalSec,
-                allowVbr = true,
+                preferredBitrateMode = MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR,
             )
-            if (configuredWithVbr != null) {
-                return configuredWithVbr
+            if (configuredWithCbr != null) {
+                return configuredWithCbr
             }
             return tryConfigureCodec(
                 width = width,
@@ -546,7 +546,7 @@ class RealTimeRecorder(
                 bitRate = bitRate,
                 frameRate = frameRate,
                 iFrameIntervalSec = iFrameIntervalSec,
-                allowVbr = false,
+                preferredBitrateMode = null,
             ) ?: error("codec configure retry returned null")
         }
 
@@ -556,21 +556,23 @@ class RealTimeRecorder(
             bitRate: Int,
             frameRate: Int,
             iFrameIntervalSec: Int,
-            allowVbr: Boolean,
+            preferredBitrateMode: Int?,
         ): MediaCodec? {
             val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            val useVbr = allowVbr && supportsBitrateMode(
-                codec = codec,
-                mimeType = MediaFormat.MIMETYPE_VIDEO_AVC,
-                bitrateMode = MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR,
-            )
+            val bitrateMode = preferredBitrateMode?.takeIf { mode ->
+                supportsBitrateMode(
+                    codec = codec,
+                    mimeType = MediaFormat.MIMETYPE_VIDEO_AVC,
+                    bitrateMode = mode,
+                )
+            }
             val format = createVideoFormat(
                 width = width,
                 height = height,
                 bitRate = bitRate,
                 frameRate = frameRate,
                 iFrameIntervalSec = iFrameIntervalSec,
-                useVbr = useVbr,
+                bitrateMode = bitrateMode,
             )
 
             return try {
@@ -578,8 +580,8 @@ class RealTimeRecorder(
                 codec
             } catch (error: Exception) {
                 codec.release()
-                if (useVbr) {
-                    Log.w("RealTimeRecorder", "VBR configure 실패, 기본 bitrate mode로 재시도합니다.", error)
+                if (bitrateMode != null) {
+                    Log.w("RealTimeRecorder", "CBR configure 실패, 기본 bitrate mode로 재시도합니다.", error)
                     null
                 } else {
                     throw error
@@ -606,18 +608,15 @@ class RealTimeRecorder(
             bitRate: Int,
             frameRate: Int,
             iFrameIntervalSec: Int,
-            useVbr: Boolean,
+            bitrateMode: Int?,
         ): MediaFormat {
             return MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, bitRate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, frameRate)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameIntervalSec)
-                if (useVbr) {
-                    setInteger(
-                        MediaFormat.KEY_BITRATE_MODE,
-                        MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR,
-                    )
+                if (bitrateMode != null) {
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, bitrateMode)
                 }
             }
         }

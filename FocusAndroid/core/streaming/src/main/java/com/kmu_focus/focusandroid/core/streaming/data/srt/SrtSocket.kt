@@ -67,6 +67,6 @@ internal class DefaultSrtSocket : SrtSocket {
 
     private companion object {
         const val DEFAULT_PAYLOAD_SIZE = 1316
-        const val DEFAULT_LATENCY_MS = 120
+        const val DEFAULT_LATENCY_MS = 500
     }
 }
