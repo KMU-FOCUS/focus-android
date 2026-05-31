@@ -79,17 +79,42 @@ class CameraAnalysisRepositoryImplMetadataSyncTest {
     private fun createRepository(
         metadataRepository: MetadataRepository,
         ioDispatcher: CoroutineDispatcher,
+        realTimeRecorder: RealTimeRecorder = RealTimeRecorder(enableBackgroundDrain = false),
     ): CameraAnalysisRepositoryImpl {
+        val context = mockk<Context>(relaxed = true)
         return CameraAnalysisRepositoryImpl(
-            frameProcessor = frameProcessor,
-            metadataRepositoryProvider = Provider { metadataRepository },
-            ownerAdder = mockk(relaxed = true),
-            trackLabelState = mockk(relaxed = true),
-            embeddingExtractor = mockk<ArcFaceEmbeddingExtractor>(relaxed = true),
-            realTimeRecorder = RealTimeRecorder(enableBackgroundDrain = false),
-            context = mockk<Context>(relaxed = true),
-            ioDispatcher = ioDispatcher,
+            frameAnalyzer = CameraFrameAnalyzer(frameProcessor),
+            ownerEnrollmentManager = OwnerEnrollmentManager(
+                ownerAdder = mockk(relaxed = true),
+                trackLabelState = mockk(relaxed = true),
+                embeddingExtractor = mockk<ArcFaceEmbeddingExtractor>(relaxed = true),
+                context = context,
+            ),
+            metadataSessionSynchronizer = CameraMetadataSessionSynchronizer(
+                metadataRepositoryProvider = Provider { metadataRepository },
+                realTimeRecorder = realTimeRecorder,
+                context = context,
+                ioDispatcher = ioDispatcher,
+            ),
         )
+    }
+
+    @Test
+    fun `recorder callback은 metadata synchronizer에 연결된다`() = runTest {
+        val realTimeRecorder = RealTimeRecorder(enableBackgroundDrain = false)
+        val repository = createRepository(
+            metadataRepository = metadataRepository,
+            ioDispatcher = UnconfinedTestDispatcher(),
+            realTimeRecorder = realTimeRecorder,
+        )
+        repository.startMetadataSession(metadataRepository)
+        repository.processFrame(frameTimestampUs = 1_000_000L)
+
+        realTimeRecorder.onVideoPtsBaseSet?.invoke(1_000_000L)
+        realTimeRecorder.onVideoSampleWritten?.invoke(1_000_000L, 0L)
+        repository.closeMetadataSession()
+
+        assertEquals(listOf(0L), metadataRepository.frames.map(FrameMetadata::ptsUs))
     }
 
     @Test
