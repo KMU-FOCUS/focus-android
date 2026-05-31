@@ -4,6 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
+import com.kmu_focus.focusandroid.core.metadata.domain.repository.LiveMetadataRepositoryFactory
+import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.broadcast.BuildConfig
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
@@ -50,6 +52,7 @@ class BroadcastCameraViewModel @Inject constructor(
     private val broadcastStreamingUseCase: BroadcastStreamingUseCase,
     private val getLatestBroadcastAnalysisUseCase: GetLatestBroadcastAnalysisUseCase,
     private val getBroadcastHighlightsUseCase: GetBroadcastHighlightsUseCase,
+    private val liveMetadataRepositoryFactory: LiveMetadataRepositoryFactory,
     private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -71,6 +74,10 @@ class BroadcastCameraViewModel @Inject constructor(
 
     val currentMuxerFactory: VideoMuxerFactory?
         get() = broadcastStreamingUseCase.currentMuxerFactory
+
+    fun createLiveMetadataRepository(): MetadataRepository {
+        return liveMetadataRepositoryFactory.create()
+    }
 
     fun setAvailableOutputModes(outputModes: List<BroadcastOutputMode>) {
         val resolvedModes = outputModes.distinct().ifEmpty {

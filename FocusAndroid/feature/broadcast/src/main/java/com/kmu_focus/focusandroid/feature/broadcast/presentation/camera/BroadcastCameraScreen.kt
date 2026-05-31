@@ -50,7 +50,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.kmu_focus.focusandroid.core.ui.insets.focusSafeDrawingPadding
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPalette
 import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
-import com.kmu_focus.focusandroid.core.grpc.data.repository.GrpcMetadataRepositoryImpl
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.config.BroadcastSrtInputProfile
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
@@ -60,22 +59,12 @@ import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.RegisteredOwner
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraScreen
 import com.kmu_focus.focusandroid.feature.camera.presentation.CameraViewModel
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.components.SingletonComponent
 import java.io.File
 import kotlinx.coroutines.delay
 
 private const val BROADCAST_START_DELAY_MS = 2_000L
 private const val RECORDING_START_TIMEOUT_MS = 5_000L
 private const val START_API_TIMEOUT_MS = 12_000L
-
-@EntryPoint
-@InstallIn(SingletonComponent::class)
-interface BroadcastCameraEntryPoint {
-    fun grpcMetadataRepository(): GrpcMetadataRepositoryImpl
-}
 
 @Composable
 fun BroadcastCameraScreen(
@@ -95,12 +84,6 @@ fun BroadcastCameraScreen(
     val uiState by viewModel.uiState.collectAsState()
     val cameraUiState by cameraViewModel.uiState.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val metadataRepository = remember(context) {
-        EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            BroadcastCameraEntryPoint::class.java,
-        ).grpcMetadataRepository()
-    }
 
     var hasStartedRecorder by rememberSaveable(uiState.broadcastId) { mutableStateOf(false) }
     var hasRequestedServerStart by rememberSaveable(uiState.broadcastId) { mutableStateOf(false) }
@@ -142,7 +125,7 @@ fun BroadcastCameraScreen(
             width = BroadcastSrtInputProfile.WIDTH,
             height = BroadcastSrtInputProfile.HEIGHT,
             muxerFactory = srtMuxerFactory,
-            metadataRepository = metadataRepository,
+            metadataRepository = viewModel.createLiveMetadataRepository(),
             sessionId = uiState.broadcastId,
             encoderConfig = BroadcastSrtInputProfile.encoderConfig,
         )

@@ -1,6 +1,8 @@
 package com.kmu_focus.focusandroid.feature.broadcast.presentation
 
 import androidx.lifecycle.SavedStateHandle
+import com.kmu_focus.focusandroid.core.metadata.domain.repository.LiveMetadataRepositoryFactory
+import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisJob
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus
@@ -22,6 +24,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -35,6 +38,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -47,6 +51,7 @@ class BroadcastCameraViewModelTest {
     private lateinit var broadcastStreamingUseCase: BroadcastStreamingUseCase
     private lateinit var getLatestBroadcastAnalysisUseCase: GetLatestBroadcastAnalysisUseCase
     private lateinit var getBroadcastHighlightsUseCase: GetBroadcastHighlightsUseCase
+    private lateinit var liveMetadataRepositoryFactory: LiveMetadataRepositoryFactory
     private lateinit var viewModel: BroadcastCameraViewModel
 
     private val testDispatcher = UnconfinedTestDispatcher()
@@ -132,6 +137,7 @@ class BroadcastCameraViewModelTest {
         broadcastStreamingUseCase = mockk(relaxed = true)
         getLatestBroadcastAnalysisUseCase = mockk()
         getBroadcastHighlightsUseCase = mockk()
+        liveMetadataRepositoryFactory = mockk(relaxed = true)
     }
 
     @After
@@ -148,8 +154,19 @@ class BroadcastCameraViewModelTest {
             broadcastStreamingUseCase = broadcastStreamingUseCase,
             getLatestBroadcastAnalysisUseCase = getLatestBroadcastAnalysisUseCase,
             getBroadcastHighlightsUseCase = getBroadcastHighlightsUseCase,
+            liveMetadataRepositoryFactory = liveMetadataRepositoryFactory,
             savedStateHandle = savedStateHandle,
         )
+    }
+
+    @Test
+    fun `createLiveMetadataRepository는 세션 factory에 위임한다`() {
+        val metadataRepository = mockk<MetadataRepository>()
+        every { liveMetadataRepositoryFactory.create() } returns metadataRepository
+        viewModel = createViewModel()
+
+        assertSame(metadataRepository, viewModel.createLiveMetadataRepository())
+        verify(exactly = 1) { liveMetadataRepositoryFactory.create() }
     }
 
     @Test
