@@ -110,7 +110,7 @@ dependencies {
 
     implementation(project(":core:ui"))
     implementation(project(":core:network"))
-    implementation(project(":feature:auth"))
+    api(project(":core:session"))
 
     implementation(libs.retrofit)
 

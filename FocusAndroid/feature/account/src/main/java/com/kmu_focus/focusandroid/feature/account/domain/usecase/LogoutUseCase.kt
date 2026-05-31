@@ -1,7 +1,7 @@
 package com.kmu_focus.focusandroid.feature.account.domain.usecase
 
 import com.kmu_focus.focusandroid.feature.account.domain.repository.AccountRepository
-import com.kmu_focus.focusandroid.feature.auth.domain.session.AuthSessionManager
+import com.kmu_focus.focusandroid.core.session.AuthSessionManager
 import javax.inject.Inject
 
 class LogoutUseCase @Inject constructor(

@@ -47,7 +47,7 @@ import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisStatus
 
 @Composable
-internal fun PostBroadcastReportSheet(
+fun PostBroadcastReportSheet(
     report: CompletedBroadcastReport,
     onDismiss: () -> Unit,
 ) {

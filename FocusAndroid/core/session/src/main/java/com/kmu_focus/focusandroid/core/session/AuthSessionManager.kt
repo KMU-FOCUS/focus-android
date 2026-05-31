@@ -1,4 +1,4 @@
-package com.kmu_focus.focusandroid.feature.auth.domain.session
+package com.kmu_focus.focusandroid.core.session
 
 import javax.inject.Inject
 import javax.inject.Singleton

@@ -10,9 +10,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kmu_focus.focusandroid.core.ui.insets.focusContentPadding
-import com.kmu_focus.focusandroid.feature.broadcast.presentation.camera.BroadcastCameraScreen
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.StreamingPlatformConnection
+import com.kmu_focus.focusandroid.presentation.broadcast.BroadcastCameraScreen
 
 @Composable
 fun MainShellScreen(
