@@ -18,5 +18,16 @@ interface CameraRecordingRepository {
         encoderConfig: EncoderConfig? = null,
     )
 
+    fun startOriginalClipBuffer(
+        width: Int,
+        height: Int,
+        onSurfaceReady: (encoderSurface: Any, width: Int, height: Int) -> Unit,
+        encoderConfig: EncoderConfig? = null,
+    )
+
+    suspend fun saveOriginalClipToGallery(): String
+
+    fun stopOriginalClipBuffer()
+
     fun stopRecording()
 }

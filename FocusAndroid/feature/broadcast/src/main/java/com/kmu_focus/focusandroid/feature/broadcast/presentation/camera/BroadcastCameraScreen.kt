@@ -206,6 +206,20 @@ fun BroadcastCameraScreen(
         }
     }
 
+    LaunchedEffect(cameraUiState.savedOriginalClipUri) {
+        if (cameraUiState.savedOriginalClipUri == null) {
+            return@LaunchedEffect
+        }
+        Toast.makeText(context, "원본 클립을 저장했습니다", Toast.LENGTH_SHORT).show()
+        cameraViewModel.clearOriginalClipSaveMessage()
+    }
+
+    LaunchedEffect(cameraUiState.originalClipSaveError) {
+        val message = cameraUiState.originalClipSaveError ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        cameraViewModel.clearOriginalClipSaveMessage()
+    }
+
     LaunchedEffect(
         uiState.isPreparing,
         uiState.isBroadcasting,
@@ -412,6 +426,10 @@ fun BroadcastCameraScreen(
                 selectedOutputMode = uiState.selectedOutputMode,
                 isPlatformActionInProgress = isPlatformActionInProgress,
                 platformSelectionEnabled = !uiState.isPreparing && !uiState.isBroadcasting && !uiState.isStopping,
+                canSaveOriginalClip = uiState.isBroadcasting &&
+                    cameraUiState.isOriginalClipBuffering &&
+                    cameraUiState.isRecording,
+                isSavingOriginalClip = cameraUiState.isSavingOriginalClip,
                 onDismiss = { isMenuPresented = false },
                 onSelectLensFacing = { target ->
                     if (cameraUiState.lensFacing != target) {
@@ -422,6 +440,7 @@ fun BroadcastCameraScreen(
                 onSelectOutputMode = viewModel::selectOutputMode,
                 onConnectPlatform = onConnectPlatform,
                 onRequestDeleteOwner = { pendingOwnerDeletion = it },
+                onSaveOriginalClip = cameraViewModel::saveOriginalClip,
             )
         }
 
@@ -581,12 +600,15 @@ private fun BroadcastMenuPanel(
     selectedOutputMode: BroadcastOutputMode,
     isPlatformActionInProgress: Boolean,
     platformSelectionEnabled: Boolean,
+    canSaveOriginalClip: Boolean,
+    isSavingOriginalClip: Boolean,
     onDismiss: () -> Unit,
     onSelectLensFacing: (LensFacing) -> Unit,
     onSelectPrivacyMode: (PrivacyMode) -> Unit,
     onSelectOutputMode: (BroadcastOutputMode) -> Unit,
     onConnectPlatform: (BroadcastOutputMode) -> Unit,
     onRequestDeleteOwner: (RegisteredOwner) -> Unit,
+    onSaveOriginalClip: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -599,88 +621,101 @@ private fun BroadcastMenuPanel(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
                 .padding(top = 30.dp, start = 24.dp, end = 24.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                FocusIosSecondaryButton(
-                    text = "닫기",
-                    onClick = onDismiss,
-                    modifier = Modifier.width(88.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    FocusIosSecondaryButton(
+                        text = "닫기",
+                        onClick = onDismiss,
+                        modifier = Modifier.width(88.dp),
+                    )
+                }
+
+                PanelSection(
+                    title = "Owner 관리",
+                    subtitle = "화면에 그대로 유지할 스트리머 프로필",
+                ) {
+                    if (registeredOwners.isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            items(
+                                items = registeredOwners,
+                                key = { "${it.ownerId}-${it.trackId}-${it.thumbnailPath}" },
+                            ) { owner ->
+                                OwnerThumbnailCard(
+                                    path = owner.thumbnailPath,
+                                    onClick = { onRequestDeleteOwner(owner) },
+                                )
+                            }
+                        }
+                    } else {
+                        EmptyPanelHint(text = "등록된 Owner가 없습니다.")
+                    }
+                }
+
+                PanelSection(
+                    title = "카메라 전환",
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LensToggleChip(
+                            text = "전면 카메라",
+                            selected = lensFacing == LensFacing.FRONT,
+                            onClick = { onSelectLensFacing(LensFacing.FRONT) },
+                        )
+                        LensToggleChip(
+                            text = "후면 카메라",
+                            selected = lensFacing == LensFacing.BACK,
+                            onClick = { onSelectLensFacing(LensFacing.BACK) },
+                        )
+                    }
+                }
+
+                PanelSection(
+                    title = "개인정보 처리",
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PrivacyToggleChip(
+                            text = PrivacyMode.Avatar.displayTitle(),
+                            selected = privacyMode == PrivacyMode.Avatar,
+                            onClick = { onSelectPrivacyMode(PrivacyMode.Avatar) },
+                        )
+                        PrivacyToggleChip(
+                            text = PrivacyMode.Mosaic.displayTitle(),
+                            selected = privacyMode == PrivacyMode.Mosaic,
+                            onClick = { onSelectPrivacyMode(PrivacyMode.Mosaic) },
+                        )
+                        PrivacyToggleChip(
+                            text = PrivacyMode.Original.displayTitle(),
+                            selected = privacyMode == PrivacyMode.Original,
+                            onClick = { onSelectPrivacyMode(PrivacyMode.Original) },
+                        )
+                    }
+                }
+
+                PlatformIconRow(
+                    platformConnections = platformConnections,
+                    selectedOutputMode = selectedOutputMode,
+                    platformSelectionEnabled = platformSelectionEnabled,
+                    isPlatformActionInProgress = isPlatformActionInProgress,
+                    onSelectOutputMode = onSelectOutputMode,
+                    onConnectPlatform = onConnectPlatform,
                 )
             }
 
-            PanelSection(
-                title = "Owner 관리",
-                subtitle = "화면에 그대로 유지할 스트리머 프로필",
-            ) {
-                if (registeredOwners.isNotEmpty()) {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        items(
-                            items = registeredOwners,
-                            key = { "${it.ownerId}-${it.trackId}-${it.thumbnailPath}" },
-                        ) { owner ->
-                            OwnerThumbnailCard(
-                                path = owner.thumbnailPath,
-                                onClick = { onRequestDeleteOwner(owner) },
-                            )
-                        }
-                    }
-                } else {
-                    EmptyPanelHint(text = "등록된 Owner가 없습니다.")
-                }
-            }
-
-            PanelSection(
-                title = "카메라 전환",
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LensToggleChip(
-                        text = "전면 카메라",
-                        selected = lensFacing == LensFacing.FRONT,
-                        onClick = { onSelectLensFacing(LensFacing.FRONT) },
-                    )
-                    LensToggleChip(
-                        text = "후면 카메라",
-                        selected = lensFacing == LensFacing.BACK,
-                        onClick = { onSelectLensFacing(LensFacing.BACK) },
-                    )
-                }
-            }
-
-            PanelSection(
-                title = "개인정보 처리",
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrivacyToggleChip(
-                        text = PrivacyMode.Avatar.displayTitle(),
-                        selected = privacyMode == PrivacyMode.Avatar,
-                        onClick = { onSelectPrivacyMode(PrivacyMode.Avatar) },
-                    )
-                    PrivacyToggleChip(
-                        text = PrivacyMode.Mosaic.displayTitle(),
-                        selected = privacyMode == PrivacyMode.Mosaic,
-                        onClick = { onSelectPrivacyMode(PrivacyMode.Mosaic) },
-                    )
-                    PrivacyToggleChip(
-                        text = PrivacyMode.Original.displayTitle(),
-                        selected = privacyMode == PrivacyMode.Original,
-                        onClick = { onSelectPrivacyMode(PrivacyMode.Original) },
-                    )
-                }
-            }
-
-            PlatformIconRow(
-                platformConnections = platformConnections,
-                selectedOutputMode = selectedOutputMode,
-                platformSelectionEnabled = platformSelectionEnabled,
-                isPlatformActionInProgress = isPlatformActionInProgress,
-                onSelectOutputMode = onSelectOutputMode,
-                onConnectPlatform = onConnectPlatform,
+            Spacer(modifier = Modifier.height(20.dp))
+            SaveClipButton(
+                enabled = canSaveOriginalClip && !isSavingOriginalClip,
+                isSaving = isSavingOriginalClip,
+                onClick = onSaveOriginalClip,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -794,6 +829,32 @@ private fun PrivacyToggleChip(
             color = if (selected) Color.White else Color.Black.copy(alpha = 0.74f),
             style = MaterialTheme.typography.labelLarge,
         )
+    }
+}
+
+@Composable
+private fun SaveClipButton(
+    enabled: Boolean,
+    isSaving: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (enabled || isSaving) FocusIosPalette.Danger else Color(0xFF9CA3AF),
+        shadowElevation = if (enabled) 8.dp else 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = if (isSaving) "저장 중..." else "클립 저장",
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 

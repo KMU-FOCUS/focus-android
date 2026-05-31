@@ -166,8 +166,12 @@ fun CameraScreen(
         viewModel.setEncoderSurfaceDispatcher { surface, width, height ->
             glViewRef?.setEncoderSurface(surface, width, height)
         }
+        viewModel.setOriginalClipSurfaceDispatcher { surface, width, height ->
+            glViewRef?.setOriginalClipEncoderSurface(surface, width, height)
+        }
         onDispose {
             viewModel.setEncoderSurfaceDispatcher(null)
+            viewModel.setOriginalClipSurfaceDispatcher(null)
         }
     }
 
@@ -534,6 +538,7 @@ private fun CameraGLView(
         },
         onRelease = { releasedView ->
             (releasedView as? VideoGLSurfaceView)?.setEncoderSurface(null, 0, 0)
+            (releasedView as? VideoGLSurfaceView)?.setOriginalClipEncoderSurface(null, 0, 0)
             onGlSurfaceViewChanged(null)
             glSurfaceView = null
             previewSurface = null

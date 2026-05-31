@@ -63,6 +63,7 @@ class VideoRenderer(
     private val program = OESTextureProgram()
     private val privacyMaskProgram = MosaicProgram()
     private val pboReader = PBOReader()
+    private val originalClipEncoderThread = EncoderThread(loggerTag = "OriginalClipEncoderThread")
 
     // 프리뷰/분석용 더블 버퍼 FBO (PBO readback과 같은 프레임을 유지)
     private val previewSourceFboIds = IntArray(2)
@@ -75,6 +76,11 @@ class VideoRenderer(
     private val encoderFboIds = IntArray(2)
     private val encoderFboTextureIds = IntArray(2)
     private var encoderFboWriteIndex = 0
+
+    // 원본 클립 저장용 더블 버퍼 FBO (privacy mask 합성 전 프레임)
+    private val originalClipFboIds = IntArray(2)
+    private val originalClipFboTextureIds = IntArray(2)
+    private var originalClipFboWriteIndex = 0
 
     private var viewWidth = 0
     private var viewHeight = 0
@@ -120,8 +126,20 @@ class VideoRenderer(
 
     private var recordingEnabled: Boolean = false
     private var lastEncoderTimestampNs: Long = Long.MIN_VALUE
+    private var lastOriginalClipTimestampNs: Long = Long.MIN_VALUE
     private var lastAnalysisTimestampNs: Long = Long.MIN_VALUE
     private var lastFrameTimestampNs: Long = Long.MIN_VALUE
+
+    @Volatile
+    private var originalClipEncoderSurface: Surface? = null
+
+    @Volatile
+    private var originalClipEncoderWidth: Int = 0
+
+    @Volatile
+    private var originalClipEncoderHeight: Int = 0
+
+    private var originalClipRecordingEnabled: Boolean = false
 
     /**
      * PBO는 1 frame 지연되어 픽셀을 반환한다(N번째 draw에서 N-1번째 frame의 pixel을 받음).
@@ -202,6 +220,30 @@ class VideoRenderer(
             encoderWidth = width
             encoderHeight = height
             recordingEnabled = true
+        }
+    }
+
+    fun setOriginalClipEncoderSurface(
+        surface: Surface?,
+        width: Int = 0,
+        height: Int = 0,
+    ) {
+        if (surface == null) {
+            originalClipRecordingEnabled = false
+            originalClipEncoderSurface = null
+            originalClipEncoderWidth = 0
+            originalClipEncoderHeight = 0
+            lastOriginalClipTimestampNs = Long.MIN_VALUE
+            originalClipEncoderThread.stop()
+        } else {
+            if (originalClipEncoderSurface !== surface) {
+                originalClipEncoderThread.stop()
+                lastOriginalClipTimestampNs = Long.MIN_VALUE
+            }
+            originalClipEncoderSurface = surface
+            originalClipEncoderWidth = width
+            originalClipEncoderHeight = height
+            originalClipRecordingEnabled = true
         }
     }
 
@@ -291,10 +333,29 @@ class VideoRenderer(
                 0
             )
         }
+
+        // 원본 클립 저장용 더블 버퍼 FBO 생성
+        GLES30.glGenTextures(2, originalClipFboTextureIds, 0)
+        GLES30.glGenFramebuffers(2, originalClipFboIds, 0)
+        for (i in 0..1) {
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, originalClipFboTextureIds[i])
+            GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA, width, height, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, null)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, originalClipFboIds[i])
+            GLES30.glFramebufferTexture2D(
+                GLES30.GL_FRAMEBUFFER,
+                GLES30.GL_COLOR_ATTACHMENT0,
+                GLES30.GL_TEXTURE_2D,
+                originalClipFboTextureIds[i],
+                0
+            )
+        }
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
         previewSourceWriteIndex = 0
         previewDisplayTextureId = 0
         encoderFboWriteIndex = 0
+        originalClipFboWriteIndex = 0
 
         if (width > 0 && height > 0) {
             pboReader.init(width, height)
@@ -406,6 +467,21 @@ class VideoRenderer(
                 encoderTextureIdForSubmit = encoderFboTextureIds[encoderFboWriteIndex]
             }
 
+            var originalClipTextureIdForSubmit = 0
+            val originalClipTimestampNs = if (originalClipRecordingEnabled && analysisPreviewTextureId != 0) {
+                resolveNextOriginalClipTimestampNs(analysisFrameTimestampNs)
+            } else {
+                analysisFrameTimestampNs
+            }
+            if (originalClipRecordingEnabled && analysisPreviewTextureId != 0) {
+                originalClipFboWriteIndex = nextEncoderBufferIndex(originalClipFboWriteIndex)
+                GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, originalClipFboIds[originalClipFboWriteIndex])
+                GLES30.glViewport(0, 0, viewWidth, viewHeight)
+                GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+                program.draw2DNoFlip(analysisPreviewTextureId)
+                originalClipTextureIdForSubmit = originalClipFboTextureIds[originalClipFboWriteIndex]
+            }
+
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
 
             // 얼굴 미검출 프레임도 녹화는 지속한다.
@@ -413,6 +489,12 @@ class VideoRenderer(
                 submitFrameToEncoderThread(
                     textureId = encoderTextureIdForSubmit,
                     frameTimestampNs = submittedFrameTimestampNs,
+                )
+            }
+            if (originalClipRecordingEnabled && originalClipTextureIdForSubmit != 0) {
+                submitFrameToOriginalClipEncoderThread(
+                    textureId = originalClipTextureIdForSubmit,
+                    frameTimestampNs = originalClipTimestampNs,
                 )
             }
         }
@@ -436,6 +518,11 @@ class VideoRenderer(
         encoderWidth = 0
         encoderHeight = 0
         encoderThread.stop()
+        originalClipRecordingEnabled = false
+        originalClipEncoderSurface = null
+        originalClipEncoderWidth = 0
+        originalClipEncoderHeight = 0
+        originalClipEncoderThread.stop()
 
         pboReader.release()
         privacyMaskProgram.release()
@@ -458,15 +545,45 @@ class VideoRenderer(
         textureId: Int,
         frameTimestampNs: Long,
     ) {
-        val targetSurface = encoderSurface ?: return
-        val targetWidth = encoderWidth
-        val targetHeight = encoderHeight
+        submitFrameToEncoderThread(
+            encoderThread = encoderThread,
+            targetSurface = encoderSurface,
+            targetWidth = encoderWidth,
+            targetHeight = encoderHeight,
+            textureId = textureId,
+            frameTimestampNs = frameTimestampNs,
+        )
+    }
+
+    private fun submitFrameToOriginalClipEncoderThread(
+        textureId: Int,
+        frameTimestampNs: Long,
+    ) {
+        submitFrameToEncoderThread(
+            encoderThread = originalClipEncoderThread,
+            targetSurface = originalClipEncoderSurface,
+            targetWidth = originalClipEncoderWidth,
+            targetHeight = originalClipEncoderHeight,
+            textureId = textureId,
+            frameTimestampNs = frameTimestampNs,
+        )
+    }
+
+    private fun submitFrameToEncoderThread(
+        encoderThread: EncoderThread,
+        targetSurface: Surface?,
+        targetWidth: Int,
+        targetHeight: Int,
+        textureId: Int,
+        frameTimestampNs: Long,
+    ) {
+        if (targetSurface == null) return
         if (targetWidth <= 0 || targetHeight <= 0) {
             Log.w(TAG, "encoder size invalid: ${targetWidth}x$targetHeight")
             return
         }
 
-        ensureEncoderThreadStarted(targetSurface)
+        ensureEncoderThreadStarted(encoderThread, targetSurface)
         if (!encoderThread.isRenderReady()) return
 
         val fenceSync = GLES30.glFenceSync(GLES30.GL_SYNC_GPU_COMMANDS_COMPLETE, 0)
@@ -500,7 +617,10 @@ class VideoRenderer(
         )
     }
 
-    private fun ensureEncoderThreadStarted(surface: Surface) {
+    private fun ensureEncoderThreadStarted(
+        encoderThread: EncoderThread,
+        surface: Surface,
+    ) {
         if (encoderThread.isRunning()) {
             if (encoderThread.isRenderReady()) return
             Log.w(TAG, "EncoderThread running but not ready. restart 시도")
@@ -519,7 +639,11 @@ class VideoRenderer(
                 sharedContext = sharedContext,
             )
         } catch (e: Exception) {
-            recordingEnabled = false
+            if (encoderThread === this.encoderThread) {
+                recordingEnabled = false
+            } else if (encoderThread === originalClipEncoderThread) {
+                originalClipRecordingEnabled = false
+            }
             Log.e(TAG, "EncoderThread 시작 실패", e)
         }
     }
@@ -552,6 +676,7 @@ class VideoRenderer(
         isPreviewSynchronizedToAnalysis = false
         lastAnalysisTimestampNs = Long.MIN_VALUE
         lastFrameTimestampNs = Long.MIN_VALUE
+        lastOriginalClipTimestampNs = Long.MIN_VALUE
         pendingAnalysisFrameTimestampNs = 0L
         previousPrivacyEllipses = emptyList()
         privacyMaskColorsByTrackId.clear()
@@ -560,6 +685,7 @@ class VideoRenderer(
     private fun resetAnalysisState() {
         lastAnalysisTimestampNs = Long.MIN_VALUE
         lastFrameTimestampNs = Long.MIN_VALUE
+        lastOriginalClipTimestampNs = Long.MIN_VALUE
         previewDisplayTextureId = 0
         previewSourceWriteIndex = 0
         isPreviewSynchronizedToAnalysis = false
@@ -590,6 +716,16 @@ class VideoRenderer(
             fallbackTimestampNs = SystemClock.elapsedRealtimeNanos(),
         )
         lastEncoderTimestampNs = resolved
+        return resolved
+    }
+
+    private fun resolveNextOriginalClipTimestampNs(frameTimestampNs: Long): Long {
+        val resolved = resolveMonotonicEncoderTimestampNs(
+            frameTimestampNs = frameTimestampNs,
+            lastEncoderTimestampNs = lastOriginalClipTimestampNs,
+            fallbackTimestampNs = SystemClock.elapsedRealtimeNanos(),
+        )
+        lastOriginalClipTimestampNs = resolved
         return resolved
     }
 
@@ -652,6 +788,16 @@ class VideoRenderer(
             GLES30.glDeleteTextures(2, encoderFboTextureIds, 0)
             encoderFboTextureIds[0] = 0
             encoderFboTextureIds[1] = 0
+        }
+        if (originalClipFboIds[0] != 0 || originalClipFboIds[1] != 0) {
+            GLES30.glDeleteFramebuffers(2, originalClipFboIds, 0)
+            originalClipFboIds[0] = 0
+            originalClipFboIds[1] = 0
+        }
+        if (originalClipFboTextureIds[0] != 0 || originalClipFboTextureIds[1] != 0) {
+            GLES30.glDeleteTextures(2, originalClipFboTextureIds, 0)
+            originalClipFboTextureIds[0] = 0
+            originalClipFboTextureIds[1] = 0
         }
     }
 

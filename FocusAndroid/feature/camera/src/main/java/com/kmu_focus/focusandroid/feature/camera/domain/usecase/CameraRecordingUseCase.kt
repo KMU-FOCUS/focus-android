@@ -36,6 +36,28 @@ class CameraRecordingUseCase @Inject constructor(
         )
     }
 
+    fun startOriginalClipBuffer(
+        width: Int,
+        height: Int,
+        onSurfaceReady: (Any, Int, Int) -> Unit,
+        encoderConfig: EncoderConfig? = null,
+    ): Result<Unit> = runCatching {
+        cameraRecordingRepository.startOriginalClipBuffer(
+            width = width,
+            height = height,
+            onSurfaceReady = onSurfaceReady,
+            encoderConfig = encoderConfig,
+        )
+    }
+
+    suspend fun saveOriginalClipToGallery(): Result<String> = runCatching {
+        cameraRecordingRepository.saveOriginalClipToGallery()
+    }
+
+    fun stopOriginalClipBuffer(): Result<Unit> = runCatching {
+        cameraRecordingRepository.stopOriginalClipBuffer()
+    }
+
     fun stopRecording(): Result<Unit> = runCatching {
         cameraRecordingRepository.stopRecording()
     }

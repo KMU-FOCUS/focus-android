@@ -3,9 +3,11 @@ package com.kmu_focus.focusandroid.feature.camera.presentation
 import com.kmu_focus.focusandroid.core.ai.domain.entity.DetectedFace
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
+import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraAnalysisUseCase
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraRecordingUseCase
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -505,6 +507,107 @@ class CameraViewModelTest {
         viewModel.clearRecordingFile()
         assertNull(viewModel.uiState.value.recordingFile)
         file.delete()
+    }
+
+    @Test
+    fun `startBroadcastRecording 성공 시 원본 클립 버퍼도 시작됨`() = runTest {
+        val muxerFactory = Any()
+        val metadataRepository = mockk<MetadataRepository>(relaxed = true)
+        every {
+            cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
+        } returns Result.success(Unit)
+        every {
+            cameraRecordingUseCase.startOriginalClipBuffer(any(), any(), any(), any())
+        } returns Result.success(Unit)
+
+        viewModel.startCamera()
+        advanceUntilIdle()
+        viewModel.startDetection()
+        viewModel.startBroadcastRecording(
+            width = 1280,
+            height = 720,
+            muxerFactory = muxerFactory,
+            metadataRepository = metadataRepository,
+            sessionId = "broadcast-1",
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.isRecording)
+        assertTrue(viewModel.uiState.value.isOriginalClipBuffering)
+        verify(exactly = 1) {
+            cameraRecordingUseCase.startOriginalClipBuffer(
+                width = 1280,
+                height = 720,
+                onSurfaceReady = any(),
+                encoderConfig = null,
+            )
+        }
+    }
+
+    @Test
+    fun `saveOriginalClip 성공 시 저장 uri가 상태에 설정됨`() = runTest {
+        val muxerFactory = Any()
+        val metadataRepository = mockk<MetadataRepository>(relaxed = true)
+        every {
+            cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
+        } returns Result.success(Unit)
+        every {
+            cameraRecordingUseCase.startOriginalClipBuffer(any(), any(), any(), any())
+        } returns Result.success(Unit)
+        coEvery {
+            cameraRecordingUseCase.saveOriginalClipToGallery()
+        } returns Result.success("content://clips/1")
+
+        viewModel.startCamera()
+        advanceUntilIdle()
+        viewModel.startDetection()
+        viewModel.startBroadcastRecording(
+            width = 1280,
+            height = 720,
+            muxerFactory = muxerFactory,
+            metadataRepository = metadataRepository,
+            sessionId = "broadcast-1",
+        )
+        advanceUntilIdle()
+
+        viewModel.saveOriginalClip()
+        advanceUntilIdle()
+
+        assertEquals("content://clips/1", viewModel.uiState.value.savedOriginalClipUri)
+        assertFalse(viewModel.uiState.value.isSavingOriginalClip)
+    }
+
+    @Test
+    fun `saveOriginalClip 실패 시 에러가 상태에 설정됨`() = runTest {
+        val muxerFactory = Any()
+        val metadataRepository = mockk<MetadataRepository>(relaxed = true)
+        every {
+            cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
+        } returns Result.success(Unit)
+        every {
+            cameraRecordingUseCase.startOriginalClipBuffer(any(), any(), any(), any())
+        } returns Result.success(Unit)
+        coEvery {
+            cameraRecordingUseCase.saveOriginalClipToGallery()
+        } returns Result.failure(RuntimeException("clip buffer empty"))
+
+        viewModel.startCamera()
+        advanceUntilIdle()
+        viewModel.startDetection()
+        viewModel.startBroadcastRecording(
+            width = 1280,
+            height = 720,
+            muxerFactory = muxerFactory,
+            metadataRepository = metadataRepository,
+            sessionId = "broadcast-1",
+        )
+        advanceUntilIdle()
+
+        viewModel.saveOriginalClip()
+        advanceUntilIdle()
+
+        assertEquals("clip buffer empty", viewModel.uiState.value.originalClipSaveError)
+        assertFalse(viewModel.uiState.value.isSavingOriginalClip)
     }
 
     // ========================================================

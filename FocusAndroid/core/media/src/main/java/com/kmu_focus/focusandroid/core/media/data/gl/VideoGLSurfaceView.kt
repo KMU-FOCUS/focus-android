@@ -77,6 +77,16 @@ class VideoGLSurfaceView(
         }
     }
 
+    fun setOriginalClipEncoderSurface(
+        surface: Surface?,
+        width: Int = 0,
+        height: Int = 0,
+    ) {
+        queueEvent {
+            renderer.setOriginalClipEncoderSurface(surface, width, height)
+        }
+    }
+
     fun release() {
         queueEvent { renderer.release() }
     }

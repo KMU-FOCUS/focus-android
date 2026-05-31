@@ -40,6 +40,10 @@ data class CameraUiState(
     val frameWidth: Int = 0,
     val frameHeight: Int = 0,
     val recordingFile: File? = null,
+    val isOriginalClipBuffering: Boolean = false,
+    val isSavingOriginalClip: Boolean = false,
+    val savedOriginalClipUri: String? = null,
+    val originalClipSaveError: String? = null,
     val registeredOwners: List<RegisteredOwner> = emptyList(),
 ) {
     val registeredOwnerThumbnails: List<String>
@@ -60,6 +64,9 @@ class CameraViewModel @Inject constructor(
     private var encoderSurfaceDispatcher: ((Surface?, Int, Int) -> Unit)? = null
 
     @Volatile
+    private var originalClipSurfaceDispatcher: ((Surface?, Int, Int) -> Unit)? = null
+
+    @Volatile
     private var currentEncoderSurface: Surface? = null
 
     @Volatile
@@ -70,6 +77,15 @@ class CameraViewModel @Inject constructor(
 
     @Volatile
     private var currentRecordingFile: File? = null
+
+    @Volatile
+    private var currentOriginalClipSurface: Surface? = null
+
+    @Volatile
+    private var currentOriginalClipWidth: Int = 0
+
+    @Volatile
+    private var currentOriginalClipHeight: Int = 0
 
     private val manualOwnerTrackIds = linkedSetOf<Int>()
 
@@ -85,6 +101,11 @@ class CameraViewModel @Inject constructor(
     fun setEncoderSurfaceDispatcher(dispatcher: ((Surface?, Int, Int) -> Unit)?) {
         encoderSurfaceDispatcher = dispatcher
         dispatcher?.invoke(currentEncoderSurface, currentEncoderWidth, currentEncoderHeight)
+    }
+
+    fun setOriginalClipSurfaceDispatcher(dispatcher: ((Surface?, Int, Int) -> Unit)?) {
+        originalClipSurfaceDispatcher = dispatcher
+        dispatcher?.invoke(currentOriginalClipSurface, currentOriginalClipWidth, currentOriginalClipHeight)
     }
 
     fun startCamera() {
@@ -123,6 +144,10 @@ class CameraViewModel @Inject constructor(
             previewWidth = 0,
             previewHeight = 0,
             registeredOwners = emptyList(),
+            isOriginalClipBuffering = false,
+            isSavingOriginalClip = false,
+            savedOriginalClipUri = null,
+            originalClipSaveError = null,
         )
         cameraAnalysisUseCase.clearProcessingThreadCache()
     }
@@ -147,6 +172,8 @@ class CameraViewModel @Inject constructor(
             previewWidth = 0,
             previewHeight = 0,
             registeredOwners = emptyList(),
+            isOriginalClipBuffering = false,
+            isSavingOriginalClip = false,
         )
     }
 
@@ -284,16 +311,29 @@ class CameraViewModel @Inject constructor(
             startResult.fold(
                 onSuccess = {
                     currentRecordingFile = null
+                    val clipBufferStarted = startOriginalClipBufferInternal(
+                        width = width,
+                        height = height,
+                        encoderConfig = encoderConfig,
+                    )
                     _uiState.value = _uiState.value.copy(
                         isRecording = true,
+                        isOriginalClipBuffering = clipBufferStarted,
                         recordingFile = null,
+                        originalClipSaveError = null,
                     )
                 },
                 onFailure = {
                     currentRecordingFile = null
                     clearEncoderSurface()
+                    clearOriginalClipSurface()
+                    cameraRecordingUseCase.stopOriginalClipBuffer()
                     cameraAnalysisUseCase.setBroadcastSourceOverride(0, 0)
-                    _uiState.value = _uiState.value.copy(isRecording = false)
+                    _uiState.value = _uiState.value.copy(
+                        isRecording = false,
+                        isOriginalClipBuffering = false,
+                        isSavingOriginalClip = false,
+                    )
                 },
             )
             if (startResult.isFailure) {
@@ -304,6 +344,31 @@ class CameraViewModel @Inject constructor(
 
     fun stopRecording() {
         stopRecordingInternal(saveRecordingFile = true)
+    }
+
+    fun saveOriginalClip() {
+        val state = _uiState.value
+        if (!state.isRecording || !state.isOriginalClipBuffering || state.isSavingOriginalClip) {
+            return
+        }
+
+        _uiState.value = state.copy(
+            isSavingOriginalClip = true,
+            savedOriginalClipUri = null,
+            originalClipSaveError = null,
+        )
+        viewModelScope.launch(ioDispatcher) {
+            val result = cameraRecordingUseCase.saveOriginalClipToGallery()
+            _uiState.value = _uiState.value.copy(
+                isSavingOriginalClip = false,
+                savedOriginalClipUri = result.getOrNull(),
+                originalClipSaveError = result.exceptionOrNull()?.message ?: if (result.isFailure) {
+                    "원본 클립 저장 실패"
+                } else {
+                    null
+                },
+            )
+        }
     }
 
     fun switchLensFacing() {
@@ -351,6 +416,13 @@ class CameraViewModel @Inject constructor(
 
     fun clearRecordingFile() {
         _uiState.value = _uiState.value.copy(recordingFile = null)
+    }
+
+    fun clearOriginalClipSaveMessage() {
+        _uiState.value = _uiState.value.copy(
+            savedOriginalClipUri = null,
+            originalClipSaveError = null,
+        )
     }
 
     fun removeRegisteredOwner(owner: RegisteredOwner) {
@@ -422,21 +494,32 @@ class CameraViewModel @Inject constructor(
         val wasRecording = _uiState.value.isRecording
         val fileToEmit = if (saveRecordingFile) currentRecordingFile else null
 
-        _uiState.value = _uiState.value.copy(isRecording = false)
+        _uiState.value = _uiState.value.copy(
+            isRecording = false,
+            isOriginalClipBuffering = false,
+            isSavingOriginalClip = false,
+        )
         clearEncoderSurface()
+        clearOriginalClipSurface()
 
         if (!wasRecording) {
             if (!saveRecordingFile) {
                 currentRecordingFile = null
             }
+            cameraRecordingUseCase.stopOriginalClipBuffer()
             return
         }
 
         val stopAction: suspend () -> Unit = {
+            cameraRecordingUseCase.stopOriginalClipBuffer()
             cameraRecordingUseCase.stopRecording()
             cameraAnalysisUseCase.closeMetadataSession()
             cameraAnalysisUseCase.setBroadcastSourceOverride(0, 0)
             currentRecordingFile = null
+            _uiState.value = _uiState.value.copy(
+                isOriginalClipBuffering = false,
+                isSavingOriginalClip = false,
+            )
             if (fileToEmit != null) {
                 _uiState.value = _uiState.value.copy(recordingFile = fileToEmit)
             }
@@ -460,6 +543,39 @@ class CameraViewModel @Inject constructor(
         currentEncoderWidth = 0
         currentEncoderHeight = 0
         encoderSurfaceDispatcher?.invoke(null, 0, 0)
+    }
+
+    private fun clearOriginalClipSurface() {
+        currentOriginalClipSurface = null
+        currentOriginalClipWidth = 0
+        currentOriginalClipHeight = 0
+        originalClipSurfaceDispatcher?.invoke(null, 0, 0)
+    }
+
+    private fun startOriginalClipBufferInternal(
+        width: Int,
+        height: Int,
+        encoderConfig: EncoderConfig?,
+    ): Boolean {
+        val result = cameraRecordingUseCase.startOriginalClipBuffer(
+            width = width,
+            height = height,
+            encoderConfig = encoderConfig,
+            onSurfaceReady = { encoderSurface, targetWidth, targetHeight ->
+                currentOriginalClipSurface = encoderSurface as? Surface
+                currentOriginalClipWidth = targetWidth
+                currentOriginalClipHeight = targetHeight
+                originalClipSurfaceDispatcher?.invoke(
+                    currentOriginalClipSurface,
+                    currentOriginalClipWidth,
+                    currentOriginalClipHeight,
+                )
+            },
+        )
+        if (result.isFailure) {
+            clearOriginalClipSurface()
+        }
+        return result.isSuccess
     }
 
     private fun resolveTrackId(
