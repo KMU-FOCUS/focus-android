@@ -3,21 +3,23 @@ package com.kmu_focus.focusandroid.core.media.data.recorder
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.util.Log
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxer
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import java.io.File
 import java.nio.ByteBuffer
 
 /**
- * 두 개의 [RealTimeRecorder.VideoMuxer] 에 동일한 sample 을 동시에 박는 wrapper.
+ * 두 개의 [VideoMuxer] 에 동일한 sample 을 동시에 박는 wrapper.
  * 예: SRT(라이브 송출) + MP4(로컬 저장) 동시 운영.
  *
  * trackIndex 는 primary muxer 기준으로 반환. secondary muxer 의 trackIndex 는 내부에서 mapping 관리.
  * primary 가 실패해도 secondary 가 살아있으면 송출은 계속 (둘 다 stopAndRelease 시 양쪽 닫음).
  */
 class TeeVideoMuxer(
-    private val primary: RealTimeRecorder.VideoMuxer,
-    private val secondary: RealTimeRecorder.VideoMuxer,
+    private val primary: VideoMuxer,
+    private val secondary: VideoMuxer,
     private val secondaryTag: String = "TeeMuxer",
-) : RealTimeRecorder.VideoMuxer {
+) : VideoMuxer {
 
     private val trackMapping = mutableMapOf<Int, Int>()
     private var secondaryFailed = false
@@ -94,19 +96,19 @@ class TeeVideoMuxer(
 }
 
 /**
- * 두 [RealTimeRecorder.VideoMuxerFactory] 를 합쳐 [TeeVideoMuxer] 를 생성하는 factory.
+ * 두 [VideoMuxerFactory] 를 합쳐 [TeeVideoMuxer] 를 생성하는 factory.
  *
  * @param primaryFactory primary muxer factory (예: SRT). primaryFactory 가 받은 outputFile 그대로 사용.
  * @param secondaryFactory secondary muxer factory (예: 로컬 MP4). secondaryOutputFileProvider 가 반환하는 파일을 사용.
  * @param secondaryOutputFileProvider primary 의 outputFile 을 받아 secondary 의 outputFile 을 반환하는 lambda.
  */
 class TeeVideoMuxerFactory(
-    private val primaryFactory: RealTimeRecorder.VideoMuxerFactory,
-    private val secondaryFactory: RealTimeRecorder.VideoMuxerFactory,
+    private val primaryFactory: VideoMuxerFactory,
+    private val secondaryFactory: VideoMuxerFactory,
     private val secondaryOutputFileProvider: (File) -> File,
-) : RealTimeRecorder.VideoMuxerFactory {
+) : VideoMuxerFactory {
 
-    override fun create(outputFile: File): RealTimeRecorder.VideoMuxer {
+    override fun create(outputFile: File): VideoMuxer {
         val secondaryFile = secondaryOutputFileProvider(outputFile)
         val primary = primaryFactory.create(outputFile)
         val secondary = secondaryFactory.create(secondaryFile)

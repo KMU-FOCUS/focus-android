@@ -3,7 +3,7 @@ package com.kmu_focus.focusandroid.feature.broadcast.presentation.camera
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
 import com.kmu_focus.focusandroid.feature.broadcast.BuildConfig
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
@@ -69,7 +69,7 @@ class BroadcastCameraViewModel @Inject constructor(
     private var startBroadcastJob: Job? = null
     private var postBroadcastReportJob: Job? = null
 
-    val currentMuxerFactory: RealTimeRecorder.VideoMuxerFactory?
+    val currentMuxerFactory: VideoMuxerFactory?
         get() = broadcastStreamingUseCase.currentMuxerFactory
 
     fun setAvailableOutputModes(outputModes: List<BroadcastOutputMode>) {

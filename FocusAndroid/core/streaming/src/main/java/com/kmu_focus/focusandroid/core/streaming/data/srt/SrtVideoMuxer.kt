@@ -2,7 +2,7 @@ package com.kmu_focus.focusandroid.core.streaming.data.srt
 
 import android.media.MediaCodec
 import android.media.MediaFormat
-import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxer
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionConfig
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -11,7 +11,7 @@ class SrtVideoMuxer(
     private val srtSocket: SrtSocket,
     private val packetizer: MpegTsPacketizer,
     private val config: SrtConnectionConfig,
-) : RealTimeRecorder.VideoMuxer {
+) : VideoMuxer {
     private val transportBuffer = ArrayList<ByteArray>(PACKETS_PER_PAYLOAD)
 
     private val trackTypes = mutableMapOf<Int, TrackType>()

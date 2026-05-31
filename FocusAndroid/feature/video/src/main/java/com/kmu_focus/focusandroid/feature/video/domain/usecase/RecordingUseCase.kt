@@ -1,5 +1,6 @@
 package com.kmu_focus.focusandroid.feature.video.domain.usecase
 
+import com.kmu_focus.focusandroid.core.media.api.recorder.EncoderSurfaceHandle
 import com.kmu_focus.focusandroid.feature.video.domain.repository.RecordingRepository
 import java.io.File
 import javax.inject.Inject
@@ -10,7 +11,7 @@ class RecordingUseCase @Inject constructor(
     fun startRecording(
         width: Int,
         height: Int,
-        onSurfaceReady: (encoderSurface: Any, width: Int, height: Int) -> Unit,
+        onSurfaceReady: (encoderSurface: EncoderSurfaceHandle, width: Int, height: Int) -> Unit,
         sourceUri: String? = null,
         audioStartPositionMs: Long = 0L,
     ): Result<File> = runCatching {

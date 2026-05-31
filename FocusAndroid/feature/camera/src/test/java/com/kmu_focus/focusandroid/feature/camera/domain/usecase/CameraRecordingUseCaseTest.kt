@@ -1,5 +1,7 @@
 package com.kmu_focus.focusandroid.feature.camera.domain.usecase
 
+import com.kmu_focus.focusandroid.core.media.api.recorder.EncoderSurfaceHandle
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.domain.entity.EncoderConfig
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraRecordingRepository
 import io.mockk.coEvery
@@ -50,13 +52,13 @@ class CameraRecordingUseCaseTest {
 
     @Test
     fun `startRecording에서 onSurfaceReady 콜백이 repository에 전달됨`() {
-        var capturedCallback: ((Any, Int, Int) -> Unit)? = null
+        var capturedCallback: ((EncoderSurfaceHandle, Int, Int) -> Unit)? = null
         every { repository.startRecording(any(), any(), any()) } answers {
             capturedCallback = thirdArg()
             File.createTempFile("test", ".mp4")
         }
 
-        val onSurface: (Any, Int, Int) -> Unit = { _, _, _ -> }
+        val onSurface: (EncoderSurfaceHandle, Int, Int) -> Unit = { _, _, _ -> }
         useCase.startRecording(1920, 1080, onSurface)
 
         assertNotNull(capturedCallback)
@@ -76,7 +78,7 @@ class CameraRecordingUseCaseTest {
 
     @Test
     fun `startBroadcastRecording 호출 시 encoderConfig를 repository에 전달한다`() {
-        val muxerFactory = Any()
+        val muxerFactory = mockk<VideoMuxerFactory>()
         val encoderConfig = EncoderConfig(
             bitrate = 5_000_000,
             frameRate = 30,

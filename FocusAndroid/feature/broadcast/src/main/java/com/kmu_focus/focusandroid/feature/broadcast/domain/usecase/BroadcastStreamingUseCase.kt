@@ -1,6 +1,6 @@
 package com.kmu_focus.focusandroid.feature.broadcast.domain.usecase
 
-import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionConfig
 import com.kmu_focus.focusandroid.core.streaming.domain.repository.SrtStreamRepository
 import com.kmu_focus.focusandroid.feature.broadcast.domain.repository.BroadcastRepository
@@ -18,7 +18,7 @@ class BroadcastStreamingUseCase @Inject constructor(
 ) {
     val connectionState = srtStreamRepository.connectionState
 
-    var currentMuxerFactory: RealTimeRecorder.VideoMuxerFactory? = null
+    var currentMuxerFactory: VideoMuxerFactory? = null
         private set
 
     suspend fun prepareBroadcastStreaming(

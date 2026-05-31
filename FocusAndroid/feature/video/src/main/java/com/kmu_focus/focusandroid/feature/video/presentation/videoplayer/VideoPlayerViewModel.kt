@@ -210,7 +210,7 @@ class VideoPlayerViewModel @Inject constructor(
             sourceUri = sourceUri,
             audioStartPositionMs = startPositionMs,
             onSurfaceReady = { encoderSurface, width, height ->
-                currentEncoderSurface = encoderSurface as? Surface
+                currentEncoderSurface = encoderSurface.surface
                 currentEncoderWidth = width
                 currentEncoderHeight = height
                 Log.w(TAG, "onInputSurfaceReady: dispatcherNull=${encoderSurfaceDispatcher == null}, size=${width}x$height")

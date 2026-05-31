@@ -6,6 +6,9 @@ import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.util.Log
 import android.view.Surface
+import com.kmu_focus.focusandroid.core.media.api.recorder.EncoderSurfaceHandle
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxer
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.domain.usecase.CalculateEncoderBitrateUseCase
 import java.io.File
 import java.nio.ByteBuffer
@@ -100,7 +103,7 @@ class RealTimeRecorder(
      * @param outputFile 출력 MP4 파일
      * @param audioTrackSource 원본 오디오 sample 공급자 (nullable)
      * @param audioStartPositionUs 오디오 seek 시작 위치 (us)
-     * @param onInputSurfaceReady GLSurfaceView에서 사용할 인코더 입력 Surface 콜백
+     * @param onInputSurfaceReady GLSurfaceView에서 사용할 인코더 입력 surface handle 콜백
      */
     @Synchronized
     fun start(
@@ -112,7 +115,7 @@ class RealTimeRecorder(
         iFrameIntervalSec: Int? = null,
         audioTrackSource: AudioTrackSource? = null,
         audioStartPositionUs: Long = 0L,
-        onInputSurfaceReady: (Surface) -> Unit,
+        onInputSurfaceReady: (EncoderSurfaceHandle) -> Unit,
         muxerFactory: VideoMuxerFactory = this.muxerFactory,
     ) {
         check(!isRecording) { "이미 녹화 중입니다" }
@@ -173,7 +176,7 @@ class RealTimeRecorder(
             drainThread = thread
         }
 
-        onInputSurfaceReady(surface)
+        onInputSurfaceReady(EncoderSurfaceHandle(surface))
     }
 
     /**
@@ -454,18 +457,6 @@ class RealTimeRecorder(
             frameRate: Int,
             iFrameIntervalSec: Int,
         ): VideoEncoder
-    }
-
-    interface VideoMuxer {
-        fun addTrack(format: MediaFormat): Int
-        fun start()
-        fun writeSampleData(trackIndex: Int, byteBuf: ByteBuffer, info: MediaCodec.BufferInfo)
-        fun stopAndRelease()
-        fun releaseQuietly()
-    }
-
-    fun interface VideoMuxerFactory {
-        fun create(outputFile: File): VideoMuxer
     }
 
     private class DefaultVideoEncoderFactory : VideoEncoderFactory {

@@ -9,6 +9,7 @@ import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraAnalysisUs
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraRecordingUseCase
 import com.kmu_focus.focusandroid.core.media.di.IoDispatcher
 import com.kmu_focus.focusandroid.core.media.domain.entity.EncoderConfig
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
@@ -248,7 +249,7 @@ class CameraViewModel @Inject constructor(
                 width = width,
                 height = height,
                 onSurfaceReady = { encoderSurface, targetWidth, targetHeight ->
-                    currentEncoderSurface = encoderSurface as? Surface
+                    currentEncoderSurface = encoderSurface.surface
                     currentEncoderWidth = targetWidth
                     currentEncoderHeight = targetHeight
                     encoderSurfaceDispatcher?.invoke(
@@ -278,7 +279,7 @@ class CameraViewModel @Inject constructor(
     fun startBroadcastRecording(
         width: Int,
         height: Int,
-        muxerFactory: Any,
+        muxerFactory: VideoMuxerFactory,
         metadataRepository: MetadataRepository,
         sessionId: String,
         encoderConfig: EncoderConfig? = null,
@@ -298,7 +299,7 @@ class CameraViewModel @Inject constructor(
                 muxerFactory = muxerFactory,
                 encoderConfig = encoderConfig,
                 onSurfaceReady = { encoderSurface, targetWidth, targetHeight ->
-                    currentEncoderSurface = encoderSurface as? Surface
+                    currentEncoderSurface = encoderSurface.surface
                     currentEncoderWidth = targetWidth
                     currentEncoderHeight = targetHeight
                     encoderSurfaceDispatcher?.invoke(
@@ -562,7 +563,7 @@ class CameraViewModel @Inject constructor(
             height = height,
             encoderConfig = encoderConfig,
             onSurfaceReady = { encoderSurface, targetWidth, targetHeight ->
-                currentOriginalClipSurface = encoderSurface as? Surface
+                currentOriginalClipSurface = encoderSurface.surface
                 currentOriginalClipWidth = targetWidth
                 currentOriginalClipHeight = targetHeight
                 originalClipSurfaceDispatcher?.invoke(

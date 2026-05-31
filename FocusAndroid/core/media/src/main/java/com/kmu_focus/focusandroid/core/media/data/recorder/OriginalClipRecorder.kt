@@ -1,6 +1,7 @@
 package com.kmu_focus.focusandroid.core.media.data.recorder
 
-import android.view.Surface
+import com.kmu_focus.focusandroid.core.media.api.recorder.EncoderSurfaceHandle
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,7 +24,7 @@ class OriginalClipRecorder @Inject constructor() {
         bitRate: Int? = null,
         frameRate: Int = DEFAULT_FRAME_RATE,
         iFrameIntervalSec: Int = DEFAULT_I_FRAME_INTERVAL_SEC,
-        onInputSurfaceReady: (Surface) -> Unit,
+        onInputSurfaceReady: (EncoderSurfaceHandle) -> Unit,
     ) {
         if (recorder.isRecording) return
 
@@ -39,7 +40,7 @@ class OriginalClipRecorder @Inject constructor() {
                 iFrameIntervalSec = iFrameIntervalSec,
                 audioTrackSource = null,
                 onInputSurfaceReady = onInputSurfaceReady,
-                muxerFactory = RealTimeRecorder.VideoMuxerFactory { muxer },
+                muxerFactory = VideoMuxerFactory { muxer },
             )
         } catch (error: Exception) {
             rollingMuxer = null

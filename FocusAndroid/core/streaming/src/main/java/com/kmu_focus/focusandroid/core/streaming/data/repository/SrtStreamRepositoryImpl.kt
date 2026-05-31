@@ -1,6 +1,6 @@
 package com.kmu_focus.focusandroid.core.streaming.data.repository
 
-import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.streaming.data.srt.SrtVideoMuxerFactory
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionConfig
 import com.kmu_focus.focusandroid.core.streaming.domain.entity.SrtConnectionState
@@ -15,7 +15,7 @@ class SrtStreamRepositoryImpl @Inject constructor() : SrtStreamRepository {
 
     override val connectionState: StateFlow<SrtConnectionState> = _connectionState.asStateFlow()
 
-    override fun createMuxerFactory(config: SrtConnectionConfig): RealTimeRecorder.VideoMuxerFactory {
+    override fun createMuxerFactory(config: SrtConnectionConfig): VideoMuxerFactory {
         return SrtVideoMuxerFactory(config)
     }
 

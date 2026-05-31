@@ -3,6 +3,8 @@ package com.kmu_focus.focusandroid.feature.camera.data.repository
 import com.kmu_focus.focusandroid.core.media.data.local.VideoLocalDataSource
 import com.kmu_focus.focusandroid.core.media.data.recorder.OriginalClipRecorder
 import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
+import com.kmu_focus.focusandroid.core.media.api.recorder.EncoderSurfaceHandle
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.domain.entity.EncoderConfig
 import com.kmu_focus.focusandroid.feature.camera.data.audio.MicAudioSource
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraRecordingRepository
@@ -20,7 +22,7 @@ class CameraRecordingRepositoryImpl @Inject constructor(
     override fun startRecording(
         width: Int,
         height: Int,
-        onSurfaceReady: (Any, Int, Int) -> Unit,
+        onSurfaceReady: (EncoderSurfaceHandle, Int, Int) -> Unit,
     ): File {
         val outputFile = videoLocalDataSource.createTempOutputFile()
         val micAudioSource = micAudioSourceProvider.get()
@@ -46,15 +48,12 @@ class CameraRecordingRepositoryImpl @Inject constructor(
     override fun startBroadcastRecording(
         width: Int,
         height: Int,
-        muxerFactory: Any,
-        onSurfaceReady: (Any, Int, Int) -> Unit,
+        muxerFactory: VideoMuxerFactory,
+        onSurfaceReady: (EncoderSurfaceHandle, Int, Int) -> Unit,
         encoderConfig: EncoderConfig?,
     ) {
         val outputFile = videoLocalDataSource.createTempOutputFile()
         val micAudioSource = micAudioSourceProvider.get()
-        val videoMuxerFactory = muxerFactory as? RealTimeRecorder.VideoMuxerFactory
-            ?: throw IllegalArgumentException("muxerFactory must be RealTimeRecorder.VideoMuxerFactory")
-
         try {
             realTimeRecorder.start(
                 width = width,
@@ -67,7 +66,7 @@ class CameraRecordingRepositoryImpl @Inject constructor(
                 onInputSurfaceReady = { surface ->
                     onSurfaceReady(surface, width, height)
                 },
-                muxerFactory = videoMuxerFactory,
+                muxerFactory = muxerFactory,
             )
         } catch (error: Exception) {
             runCatching { micAudioSource.release() }
@@ -78,7 +77,7 @@ class CameraRecordingRepositoryImpl @Inject constructor(
     override fun startOriginalClipBuffer(
         width: Int,
         height: Int,
-        onSurfaceReady: (Any, Int, Int) -> Unit,
+        onSurfaceReady: (EncoderSurfaceHandle, Int, Int) -> Unit,
         encoderConfig: EncoderConfig?,
     ) {
         originalClipRecorder.start(

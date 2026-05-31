@@ -4,6 +4,8 @@ import android.media.MediaCodec
 import android.media.MediaFormat
 import android.util.Log
 import android.view.Surface
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxer
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -19,9 +21,9 @@ import java.nio.ByteBuffer
 class RealTimeRecorderTest {
 
     private val encoder = mockk<RealTimeRecorder.VideoEncoder>(relaxed = true)
-    private val muxer = mockk<RealTimeRecorder.VideoMuxer>(relaxed = true)
+    private val muxer = mockk<VideoMuxer>(relaxed = true)
     private val encoderFactory = mockk<RealTimeRecorder.VideoEncoderFactory>()
-    private val muxerFactory = mockk<RealTimeRecorder.VideoMuxerFactory>()
+    private val muxerFactory = mockk<VideoMuxerFactory>()
 
     private val recorder = RealTimeRecorder(
         encoderFactory = encoderFactory,
@@ -67,7 +69,7 @@ class RealTimeRecorderTest {
             width = 1920,
             height = 1080,
             outputFile = output,
-            onInputSurfaceReady = { s -> receivedSurface = s },
+            onInputSurfaceReady = { handle -> receivedSurface = handle.surface },
         )
 
         // Then

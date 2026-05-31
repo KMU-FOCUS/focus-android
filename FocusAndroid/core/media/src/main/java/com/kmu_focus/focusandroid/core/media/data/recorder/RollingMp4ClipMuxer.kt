@@ -3,13 +3,14 @@ package com.kmu_focus.focusandroid.core.media.data.recorder
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxer
 import java.io.File
 import java.nio.ByteBuffer
 
 class RollingMp4ClipMuxer(
     retentionDurationUs: Long = RollingEncodedSampleBuffer.DEFAULT_RETENTION_DURATION_US,
     keyFrameLookbackUs: Long = RollingEncodedSampleBuffer.DEFAULT_KEY_FRAME_LOOKBACK_US,
-) : RealTimeRecorder.VideoMuxer {
+) : VideoMuxer {
     private enum class TrackType {
         Video,
         Audio,

@@ -4,6 +4,7 @@ import com.kmu_focus.focusandroid.core.ai.domain.entity.DetectedFace
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraAnalysisUseCase
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraRecordingUseCase
@@ -511,7 +512,7 @@ class CameraViewModelTest {
 
     @Test
     fun `startBroadcastRecording 성공 시 원본 클립 버퍼도 시작됨`() = runTest {
-        val muxerFactory = Any()
+        val muxerFactory = mockk<VideoMuxerFactory>()
         val metadataRepository = mockk<MetadataRepository>(relaxed = true)
         every {
             cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
@@ -546,7 +547,7 @@ class CameraViewModelTest {
 
     @Test
     fun `saveOriginalClip 성공 시 저장 uri가 상태에 설정됨`() = runTest {
-        val muxerFactory = Any()
+        val muxerFactory = mockk<VideoMuxerFactory>()
         val metadataRepository = mockk<MetadataRepository>(relaxed = true)
         every {
             cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
@@ -579,7 +580,7 @@ class CameraViewModelTest {
 
     @Test
     fun `saveOriginalClip 실패 시 에러가 상태에 설정됨`() = runTest {
-        val muxerFactory = Any()
+        val muxerFactory = mockk<VideoMuxerFactory>()
         val metadataRepository = mockk<MetadataRepository>(relaxed = true)
         every {
             cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
