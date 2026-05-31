@@ -42,11 +42,11 @@ class FaceMetadataStreamManager(
                 if (sentFrameCount == 1L || sentFrameCount % 60L == 0L) {
                     Log.i(
                         TAG,
-                        "sendFrame ok session=${frame.sessionId} pts_us=${frame.ptsUs} faces=${frame.facesCount} total=$sentFrameCount",
+                        "sendFrame ok total=$sentFrameCount",
                     )
                 }
             } catch (t: Throwable) {
-                Log.e(TAG, "sendFrame failed session=${frame.sessionId}", t)
+                Log.e(TAG, "sendFrame failed", t)
                 clearStreamLocked(requestObserver ?: return)
             }
         }
@@ -54,7 +54,7 @@ class FaceMetadataStreamManager(
 
     fun complete() {
         synchronized(lock) {
-            Log.i(TAG, "complete session=$currentSessionId total=$sentFrameCount")
+            Log.i(TAG, "complete total=$sentFrameCount")
             requestObserver?.onCompleted()
             requestObserver = null
             currentSessionId = null
@@ -63,28 +63,28 @@ class FaceMetadataStreamManager(
     }
 
     private fun openStreamLocked(sessionId: String) {
-        Log.i(TAG, "openStream session=$sessionId")
+        Log.i(TAG, "openStream")
         lateinit var nextRequestObserver: StreamObserver<PushFaceMetadataRequest>
         nextRequestObserver = asyncStub.pushFaceMetadata(
             object : StreamObserver<PushFaceMetadataResponse> {
                 override fun onNext(value: PushFaceMetadataResponse) {
                     Log.i(
                         TAG,
-                        "server response session=$sessionId success=${value.success} " +
+                        "server response success=${value.success} " +
                             "received=${value.receivedFrames} accepted=${value.acceptedFrames} " +
-                            "dropped=${value.droppedFrames} last_pts_us=${value.lastPtsUs}",
+                            "dropped=${value.droppedFrames}",
                     )
                 }
 
                 override fun onError(t: Throwable) {
-                    Log.e(TAG, "stream onError session=$sessionId", t)
+                    Log.e(TAG, "stream onError", t)
                     synchronized(lock) {
                         clearStreamLocked(nextRequestObserver)
                     }
                 }
 
                 override fun onCompleted() {
-                    Log.i(TAG, "stream onCompleted session=$sessionId sent=$sentFrameCount")
+                    Log.i(TAG, "stream onCompleted sent=$sentFrameCount")
                     synchronized(lock) {
                         clearStreamLocked(nextRequestObserver)
                     }

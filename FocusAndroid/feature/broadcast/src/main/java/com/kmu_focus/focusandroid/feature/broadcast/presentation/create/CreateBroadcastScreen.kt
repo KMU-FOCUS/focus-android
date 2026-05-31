@@ -93,7 +93,6 @@ fun CreateBroadcastScreen(
                     )
                     BroadcastMetaRow(label = "방송 제목", value = broadcast.title)
                     BroadcastMetaRow(label = "Broadcast ID", value = broadcast.broadcastId)
-                    BroadcastMetaRow(label = "Stream Key", value = broadcast.streamKey)
                     BroadcastMetaRow(label = "라이브 상태", value = broadcast.liveStatus.name)
                     broadcast.hlsUrl?.let { hlsUrl ->
                         BroadcastMetaRow(label = "HLS", value = hlsUrl)

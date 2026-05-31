@@ -20,7 +20,6 @@ import com.kmu_focus.focusandroid.core.media.di.IoDispatcher
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import dagger.hilt.android.qualifiers.ApplicationContext
-import android.os.Environment
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -97,7 +96,6 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
     private val broadcastMetadataTrackingSlotAllocator =
         BroadcastMetadataTrackingSlotAllocator(MAX_BROADCAST_METADATA_FACE_COUNT)
     private var metadataDumpRepository: JsonMetadataRepository? = null
-    private var metadataDumpDir: File? = null
 
     init {
         realTimeRecorder.onVideoPtsBaseSet = { baseUs -> setEncoderPtsBaseUs(baseUs) }
@@ -191,7 +189,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             trackLabelState.markOwner(trackId)
             Log.i(
                 TAG,
-                "registerOwner: trackId=$trackId registered, ownerId=$ownerId, thumbnail=$thumbnailPath",
+                "registerOwner: trackId=$trackId registered, ownerId=$ownerId",
             )
         }
 
@@ -219,7 +217,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             ?.let { path ->
                 runCatching { File(path).delete() }
                     .onFailure { throwable ->
-                        Log.w(TAG, "removeOwner: thumbnail delete failed path=$path", throwable)
+                        Log.w(TAG, "removeOwner: thumbnail delete failed", throwable)
                     }
             }
         Log.i(TAG, "removeOwner: ownerId=$ownerId, trackId=$trackId removed")
@@ -285,7 +283,7 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         repository: MetadataRepository?,
         sessionId: String?,
     ) {
-        val dumpPath = openMetadataDumpFile(sessionId)
+        openMetadataDumpFile(sessionId)
         synchronized(metadataStateLock) {
             metadataEnabled = true
             metadataFrameIndex = 0
@@ -308,10 +306,8 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         Log.i(
             TAG,
             "==== METADATA SESSION START ====\n" +
-                "  broadcastId(session_id) = $sessionId\n" +
                 "  repo                    = ${repository?.javaClass?.simpleName}\n" +
                 "  startedAt               = ${System.currentTimeMillis()}\n" +
-                "  metadataDumpPath        = $dumpPath\n" +
                 "================================",
         )
     }
@@ -325,39 +321,35 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
             val repo = JsonMetadataRepository(outputDir = dir)
             synchronized(metadataStateLock) {
                 metadataDumpRepository = repo
-                metadataDumpDir = dir
             }
             dir.absolutePath
         } catch (t: Throwable) {
-            Log.w(TAG, "metadata dump open 실패: ${dir.absolutePath}", t)
+            Log.w(TAG, "metadata dump open 실패", t)
             null
         }
     }
 
     private fun closeMetadataDumpFile() {
-        val (repo, dir) = synchronized(metadataStateLock) {
+        val repo = synchronized(metadataStateLock) {
             val r = metadataDumpRepository
-            val d = metadataDumpDir
             metadataDumpRepository = null
-            metadataDumpDir = null
-            r to d
+            r
         }
         if (repo == null) return
         metadataScope.launch {
             runCatching { repo.close() }.onFailure {
                 Log.w(TAG, "metadata dump close 실패", it)
             }
-            Log.i(TAG, "metadata dump finalized: dir=${dir?.absolutePath}")
+            Log.i(TAG, "metadata dump finalized")
         }
     }
 
     /**
      * 영상 분석 path 의 [MetadataModule.MetadataOutputDir] 와 동일한 base 디렉토리.
-     * 외부 files dir / Documents / metadata. (영상 처리 결과 metadata 들과 같은 위치)
+     * 민감한 얼굴 메타데이터는 백업되지 않는 앱 내부 저장소에만 기록한다.
      */
     private fun resolveMetadataBaseDir(): File {
-        val externalDocuments = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
-        return File(externalDocuments ?: context.filesDir, METADATA_DUMP_BASE_DIR).apply { mkdirs() }
+        return File(context.noBackupFilesDir, METADATA_DUMP_BASE_DIR).apply { mkdirs() }
     }
 
     override suspend fun closeMetadataSession() {
@@ -569,22 +561,16 @@ class CameraAnalysisRepositoryImpl @Inject constructor(
         )
         val enqueued = metadataEnqueuedCount.incrementAndGet()
         if (enqueued == 1L || enqueued % 60L == 0L) {
-            val firstBbox = metadata.faces.firstOrNull()?.bbox?.let {
-                "[${it.x},${it.y},${it.width}x${it.height}]"
-            } ?: "<none>"
             val activeSrcW = if (broadcastSourceWidth > 0) broadcastSourceWidth else sourceFrameWidth
             val activeSrcH = if (broadcastSourceHeight > 0) broadcastSourceHeight else sourceFrameHeight
             Log.i(
                 TAG,
-                "enqueueMetadata #$enqueued session=${dispatchContext.sessionId} pts_us=${metadata.ptsUs} " +
-                    "rawUs=$frameTimestampUs base=$ptsBaseUs delta=${metadata.ptsUs} " +
-                    "rawFaces=${frameExport.faces.size} sendFaces=${metadata.faces.size} " +
+                "enqueueMetadata #$enqueued rawFaces=${frameExport.faces.size} sendFaces=${metadata.faces.size} " +
                     "faceCapDropped=$faceCapDroppedCount " +
                     "drop[$dropStats rawCoeffNull=$rawCoeffNullCount] " +
                     "analysis=${frame.frameWidth}x${frame.frameHeight} " +
                     "source=${activeSrcW}x${activeSrcH}" +
-                    (if (broadcastSourceWidth > 0) "(output-frame)" else "(source-frame)") +
-                    " firstBbox=$firstBbox",
+                    (if (broadcastSourceWidth > 0) "(output-frame)" else "(source-frame)"),
             )
         }
 

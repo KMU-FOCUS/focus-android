@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 import org.gradle.api.GradleException
 
@@ -31,6 +32,11 @@ android {
 
         check(serverBaseUrl.endsWith("/")) {
             "serverBaseUrl은 반드시 / 로 끝나야 합니다."
+        }
+        val serverBaseUri = runCatching { URI(serverBaseUrl) }
+            .getOrElse { throw GradleException("serverBaseUrl 형식이 올바르지 않습니다.", it) }
+        check(serverBaseUri.scheme.equals("https", ignoreCase = true) && !serverBaseUri.host.isNullOrBlank()) {
+            "serverBaseUrl은 유효한 HTTPS URL이어야 합니다."
         }
         buildConfigField("String", "SERVER_BASE_URL", "\"$serverBaseUrl\"")
     }

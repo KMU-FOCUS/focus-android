@@ -25,7 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val BROADCAST_ID_KEY = "broadcastId"
-private const val STREAM_KEY_KEY = "streamKey"
+private const val LEGACY_STREAM_KEY_KEY = "streamKey"
 private const val HLS_URL_KEY = "hlsUrl"
 private const val ANALYSIS_POLL_INTERVAL_MS = 2_000L
 
@@ -56,11 +56,14 @@ class BroadcastCameraViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(
         BroadcastCameraUiState(
             broadcastId = savedStateHandle[BROADCAST_ID_KEY] ?: "",
-            streamKey = savedStateHandle[STREAM_KEY_KEY] ?: "",
             hlsUrl = savedStateHandle[HLS_URL_KEY] ?: "",
         ),
     )
     val uiState: StateFlow<BroadcastCameraUiState> = _uiState.asStateFlow()
+
+    init {
+        savedStateHandle.remove<String>(LEGACY_STREAM_KEY_KEY)
+    }
 
     private var heartbeatJob: Job? = null
     private var startBroadcastJob: Job? = null
@@ -98,7 +101,6 @@ class BroadcastCameraViewModel @Inject constructor(
         hlsUrl: String = uiState.value.hlsUrl,
     ) {
         savedStateHandle[BROADCAST_ID_KEY] = broadcastId
-        savedStateHandle[STREAM_KEY_KEY] = streamKey
         savedStateHandle[HLS_URL_KEY] = hlsUrl
         _uiState.update { current ->
             current.copy(
@@ -380,7 +382,7 @@ class BroadcastCameraViewModel @Inject constructor(
         val preservedModes = uiState.value.availableOutputModes
         val preservedSelection = uiState.value.selectedOutputMode
         savedStateHandle[BROADCAST_ID_KEY] = ""
-        savedStateHandle[STREAM_KEY_KEY] = ""
+        savedStateHandle.remove<String>(LEGACY_STREAM_KEY_KEY)
         savedStateHandle[HLS_URL_KEY] = ""
         _uiState.update {
             BroadcastCameraUiState(

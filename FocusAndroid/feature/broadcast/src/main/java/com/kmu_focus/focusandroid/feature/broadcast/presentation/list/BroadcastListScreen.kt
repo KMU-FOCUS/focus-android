@@ -169,7 +169,7 @@ private fun BroadcastRow(
             )
         }
         Text(
-            text = "상태 ${broadcast.liveStatus.name} · Stream ${broadcast.streamKey}",
+            text = "상태 ${broadcast.liveStatus.name}",
             style = MaterialTheme.typography.bodySmall,
             color = FocusIosPalette.TextMuted,
         )

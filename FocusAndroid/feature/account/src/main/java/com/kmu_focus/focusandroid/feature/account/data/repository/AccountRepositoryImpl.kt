@@ -12,6 +12,7 @@ import com.kmu_focus.focusandroid.feature.account.domain.model.AccountError
 import com.kmu_focus.focusandroid.feature.account.domain.repository.AccountRepository
 import java.io.IOException
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 import retrofit2.Response
 
 class AccountRepositoryImpl @Inject constructor(
@@ -66,43 +67,22 @@ class AccountRepositoryImpl @Inject constructor(
     }
 
     override suspend fun logout(): Result<Unit> {
+        try {
+            accountApi.logout()
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (_: Throwable) {
+            // 로컬 로그아웃은 서버 revoke 요청 결과와 무관하게 완료한다.
+        }
         return try {
-            val response = accountApi.logout()
-            val body = response.body()
-
-            when {
-                response.isSuccessful && body?.success == true -> {
-                    tokenStore.clear()
-                    Result.success(Unit)
-                }
-
-                response.isSuccessful -> {
-                    Result.failure(
-                        AccountError.Network(
-                            body?.message?.takeIf { it.isNotBlank() } ?: "로그아웃 실패",
-                        )
-                    )
-                }
-
-                else -> {
-                    Result.failure(
-                        AccountError.Network(
-                            response.extractErrorMessage("로그아웃 실패"),
-                        )
-                    )
-                }
-            }
-        } catch (exception: IOException) {
-            Result.failure(
-                AccountError.Network(
-                    message = exception.message ?: "네트워크 오류",
-                    cause = exception,
-                )
-            )
+            tokenStore.clear()
+            Result.success(Unit)
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (throwable: Throwable) {
             Result.failure(
                 AccountError.Unexpected(
-                    message = throwable.message ?: "로그아웃 실패",
+                    message = throwable.message ?: "로컬 로그아웃 실패",
                     cause = throwable,
                 )
             )

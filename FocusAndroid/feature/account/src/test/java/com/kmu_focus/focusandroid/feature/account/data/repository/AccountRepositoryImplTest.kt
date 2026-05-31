@@ -13,6 +13,7 @@ import com.kmu_focus.focusandroid.feature.account.domain.model.AccountError
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import java.io.IOException
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
@@ -147,6 +148,16 @@ class AccountRepositoryImplTest {
 
         assertTrue(result.isSuccess)
         coVerify(exactly = 1) { accountApi.disconnectChzzk() }
+    }
+
+    @Test
+    fun `로그아웃 서버 요청이 실패해도 로컬 토큰을 삭제하고 성공을 반환한다`() = runTest {
+        coEvery { accountApi.logout() } throws IOException("offline")
+
+        val result = repository.logout()
+
+        assertTrue(result.isSuccess)
+        coVerify(exactly = 1) { tokenStore.clear() }
     }
 
     private fun buildAuthUrl(): String {

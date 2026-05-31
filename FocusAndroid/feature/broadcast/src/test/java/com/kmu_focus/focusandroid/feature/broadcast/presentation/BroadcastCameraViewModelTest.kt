@@ -139,14 +139,16 @@ class BroadcastCameraViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun createViewModel(): BroadcastCameraViewModel {
+    private fun createViewModel(
+        savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    ): BroadcastCameraViewModel {
         return BroadcastCameraViewModel(
             createBroadcastUseCase = createBroadcastUseCase,
             deleteBroadcastUseCase = deleteBroadcastUseCase,
             broadcastStreamingUseCase = broadcastStreamingUseCase,
             getLatestBroadcastAnalysisUseCase = getLatestBroadcastAnalysisUseCase,
             getBroadcastHighlightsUseCase = getBroadcastHighlightsUseCase,
-            savedStateHandle = SavedStateHandle(),
+            savedStateHandle = savedStateHandle,
         )
     }
 
@@ -162,6 +164,26 @@ class BroadcastCameraViewModelTest {
         assertFalse(state.isStopping)
         assertEquals(SrtConnectionState.DISCONNECTED, state.srtState)
         assertNull(state.error)
+    }
+
+    @Test
+    fun `stream key는 saved state에 저장하지 않고 이전 저장값도 제거한다`() = runTest {
+        coEvery { createBroadcastUseCase.invoke(any()) } returns Result.success(preparedBroadcast)
+        coEvery {
+            broadcastStreamingUseCase.prepareBroadcastStreaming(
+                streamKey = preparedBroadcast.streamKey,
+                mediaMtxHost = any(),
+                mediaMtxPort = any(),
+            )
+        } returns Result.success(Unit)
+        val savedStateHandle = SavedStateHandle(mapOf("streamKey" to "legacy-stream-key"))
+        viewModel = createViewModel(savedStateHandle)
+
+        assertNull(savedStateHandle.get<String>("streamKey"))
+        viewModel.startBroadcasting()
+
+        assertEquals("stream-key-abc", viewModel.uiState.value.streamKey)
+        assertNull(savedStateHandle.get<String>("streamKey"))
     }
 
     @Test
