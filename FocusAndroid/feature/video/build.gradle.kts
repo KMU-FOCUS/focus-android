@@ -62,6 +62,7 @@ dependencies {
     implementation(project(":core:ai"))
     implementation(project(":core:media"))
     implementation(project(":core:metadata"))
+    implementation(project(":core:ui"))
 
     // OpenCV (ByteBuffer→Mat 변환, GL 프레임 처리)
     implementation(libs.opencv.android)

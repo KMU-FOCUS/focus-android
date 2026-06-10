@@ -11,6 +11,8 @@ interface OwnerAdder {
     fun addOwnerFromEmbeddingWithOwnerId(embedding: FloatArray): Int? = null
     /** owner 슬롯의 대표 임베딩을 교체. */
     fun replaceOwnerEmbedding(ownerId: Int, embedding: FloatArray): Boolean = false
+    /** 특정 owner 슬롯을 삭제. */
+    fun removeOwner(ownerId: Int): Boolean = false
     /** 등록된 소유자 전부 삭제. */
     fun clearOwners()
 }

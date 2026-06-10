@@ -11,6 +11,10 @@ object GrpcMetadataMapper {
         return PushFaceMetadataRequest.newBuilder()
             .setSessionId(metadata.sessionId)
             .setPtsUs(metadata.ptsUs)
+            .setFrameWidth(metadata.frameWidth)
+            .setFrameHeight(metadata.frameHeight)
+            .setRotation(metadata.rotation)
+            .setMirrored(metadata.mirrored)
             .addAllFaces(
                 metadata.faces.map { face ->
                     FaceEntry.newBuilder()
@@ -23,11 +27,15 @@ object GrpcMetadataMapper {
                                 .setHeight(face.bbox.height)
                                 .build()
                         )
-                        .setTdmmRaw(
-                            TdmmRaw.newBuilder()
-                                .addAllCoeffs(face.tdmm.coeffs.toList())
-                                .build()
-                        )
+                        .apply {
+                            face.tdmm?.let { tdmm ->
+                                setTdmmRaw(
+                                    TdmmRaw.newBuilder()
+                                        .addAllCoeffs(tdmm.coeffs.toList())
+                                        .build()
+                                )
+                            }
+                        }
                         .build()
                 }
             )

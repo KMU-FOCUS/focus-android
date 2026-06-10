@@ -1,10 +1,14 @@
 package com.kmu_focus.focusandroid.feature.camera.presentation
 
 import com.kmu_focus.focusandroid.core.ai.domain.entity.DetectedFace
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
+import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.LensFacing
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraAnalysisUseCase
 import com.kmu_focus.focusandroid.feature.camera.domain.usecase.CameraRecordingUseCase
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -86,6 +90,11 @@ class CameraViewModelTest {
     }
 
     @Test
+    fun `초기 상태에서 privacyMode는 Avatar임`() = runTest {
+        assertEquals(PrivacyMode.Avatar, viewModel.uiState.value.privacyMode)
+    }
+
+    @Test
     fun `초기 상태에서 프레임 크기가 0임`() = runTest {
         assertEquals(0, viewModel.uiState.value.frameWidth)
         assertEquals(0, viewModel.uiState.value.frameHeight)
@@ -142,12 +151,12 @@ class CameraViewModelTest {
         val buffer = createTestBuffer()
         val faces = listOf(DetectedFace(10, 20, 100, 100, 0.9f))
         val frame = ProcessedFrame(faces, 640, 480, 1000L)
-        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returns frame
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returns frame
 
         viewModel.startCamera()
         advanceUntilIdle()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
 
         viewModel.stopCamera()
         advanceUntilIdle()
@@ -162,12 +171,12 @@ class CameraViewModelTest {
             frameWidth = 640, frameHeight = 480, timestampMs = 1000L,
             trackingIds = listOf(1)
         )
-        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returns frame
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returns frame
 
         viewModel.startCamera()
         advanceUntilIdle()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
 
         viewModel.stopCamera()
         advanceUntilIdle()
@@ -221,6 +230,14 @@ class CameraViewModelTest {
         assertTrue(viewModel.uiState.value.faceLabels.isEmpty())
     }
 
+    @Test
+    fun `setPrivacyMode 호출 시 상태와 useCase가 함께 갱신됨`() = runTest {
+        viewModel.setPrivacyMode(PrivacyMode.Mosaic)
+
+        assertEquals(PrivacyMode.Mosaic, viewModel.uiState.value.privacyMode)
+        verify(exactly = 1) { cameraAnalysisUseCase.setPrivacyMode(PrivacyMode.Mosaic) }
+    }
+
     // ========================================================
     // processFrameSync 테스트
     // ========================================================
@@ -230,12 +247,12 @@ class CameraViewModelTest {
         val buffer = createTestBuffer()
         val faces = listOf(DetectedFace(10, 20, 100, 100, 0.9f))
         val frame = ProcessedFrame(faces, 640, 480, 1000L)
-        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returns frame
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returns frame
 
         viewModel.startCamera()
         advanceUntilIdle()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
 
         assertEquals(1, viewModel.uiState.value.detectedFaces.size)
         assertEquals(0.9f, viewModel.uiState.value.detectedFaces[0].confidence, 0.001f)
@@ -245,12 +262,12 @@ class CameraViewModelTest {
     fun `processFrameSync 호출 시 frameWidth와 frameHeight가 업데이트됨`() = runTest {
         val buffer = createTestBuffer(1920, 1080)
         val frame = ProcessedFrame(emptyList(), 1920, 1080, 1000L)
-        every { cameraAnalysisUseCase.processFrame(buffer, 1920, 1080, any()) } returns frame
+        every { cameraAnalysisUseCase.processFrame(buffer, 1920, 1080, any(), any()) } returns frame
 
         viewModel.startCamera()
         advanceUntilIdle()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 1920, 1080)
+        viewModel.processFrameSync(buffer, 1920, 1080, 1_000_000L)
 
         assertEquals(1920, viewModel.uiState.value.frameWidth)
         assertEquals(1080, viewModel.uiState.value.frameHeight)
@@ -269,12 +286,12 @@ class CameraViewModelTest {
             trackingIds = listOf(1, 2),
             faceLabels = listOf(true, false)
         )
-        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returns frame
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returns frame
 
         viewModel.startCamera()
         advanceUntilIdle()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
 
         assertEquals(listOf(1, 2), viewModel.uiState.value.trackingIds)
         assertEquals(listOf(true, false), viewModel.uiState.value.faceLabels)
@@ -286,9 +303,9 @@ class CameraViewModelTest {
 
         viewModel.startCamera()
         advanceUntilIdle()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
 
-        verify(exactly = 0) { cameraAnalysisUseCase.processFrame(any(), any(), any(), any()) }
+        verify(exactly = 0) { cameraAnalysisUseCase.processFrame(any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -305,12 +322,12 @@ class CameraViewModelTest {
             trackingIds = listOf(1, 2, 3),
             faceLabels = listOf(true, false, null)
         )
-        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returns frame
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returns frame
 
         viewModel.startCamera()
         advanceUntilIdle()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
 
         assertEquals(3, viewModel.uiState.value.detectedFaces.size)
         assertEquals(0.95f, viewModel.uiState.value.detectedFaces[0].confidence, 0.001f)
@@ -325,16 +342,16 @@ class CameraViewModelTest {
             listOf(DetectedFace(10, 20, 100, 100, 0.9f)), 640, 480, 0L
         )
         val frameEmpty = ProcessedFrame(emptyList(), 640, 480, 100L)
-        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returnsMany
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returnsMany
             listOf(frameWithFaces, frameEmpty)
 
         viewModel.startCamera()
         advanceUntilIdle()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
         assertEquals(1, viewModel.uiState.value.detectedFaces.size)
 
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
         assertTrue(viewModel.uiState.value.detectedFaces.isEmpty())
     }
 
@@ -346,24 +363,24 @@ class CameraViewModelTest {
         advanceUntilIdle()
         viewModel.startDetection()
         viewModel.stopDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
 
-        verify(exactly = 0) { cameraAnalysisUseCase.processFrame(any(), any(), any(), any()) }
+        verify(exactly = 0) { cameraAnalysisUseCase.processFrame(any(), any(), any(), any(), any()) }
     }
 
     @Test
     fun `processFrameSync 연속 호출 시 매번 UseCase가 호출됨`() {
         val buffer = createTestBuffer()
         val frame = ProcessedFrame(emptyList(), 640, 480, 0L)
-        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returns frame
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returns frame
 
         viewModel.startCamera()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
-        viewModel.processFrameSync(buffer, 640, 480)
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
+        viewModel.processFrameSync(buffer, 640, 480, 2_000_000L)
+        viewModel.processFrameSync(buffer, 640, 480, 3_000_000L)
 
-        verify(exactly = 3) { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) }
+        verify(exactly = 3) { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) }
     }
 
     // ========================================================
@@ -493,6 +510,107 @@ class CameraViewModelTest {
         file.delete()
     }
 
+    @Test
+    fun `startBroadcastRecording 성공 시 원본 클립 버퍼도 시작됨`() = runTest {
+        val muxerFactory = mockk<VideoMuxerFactory>()
+        val metadataRepository = mockk<MetadataRepository>(relaxed = true)
+        every {
+            cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
+        } returns Result.success(Unit)
+        every {
+            cameraRecordingUseCase.startOriginalClipBuffer(any(), any(), any(), any())
+        } returns Result.success(Unit)
+
+        viewModel.startCamera()
+        advanceUntilIdle()
+        viewModel.startDetection()
+        viewModel.startBroadcastRecording(
+            width = 1280,
+            height = 720,
+            muxerFactory = muxerFactory,
+            metadataRepository = metadataRepository,
+            sessionId = "broadcast-1",
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.isRecording)
+        assertTrue(viewModel.uiState.value.isOriginalClipBuffering)
+        verify(exactly = 1) {
+            cameraRecordingUseCase.startOriginalClipBuffer(
+                width = 1280,
+                height = 720,
+                onSurfaceReady = any(),
+                encoderConfig = null,
+            )
+        }
+    }
+
+    @Test
+    fun `saveOriginalClip 성공 시 저장 uri가 상태에 설정됨`() = runTest {
+        val muxerFactory = mockk<VideoMuxerFactory>()
+        val metadataRepository = mockk<MetadataRepository>(relaxed = true)
+        every {
+            cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
+        } returns Result.success(Unit)
+        every {
+            cameraRecordingUseCase.startOriginalClipBuffer(any(), any(), any(), any())
+        } returns Result.success(Unit)
+        coEvery {
+            cameraRecordingUseCase.saveOriginalClipToGallery()
+        } returns Result.success("content://clips/1")
+
+        viewModel.startCamera()
+        advanceUntilIdle()
+        viewModel.startDetection()
+        viewModel.startBroadcastRecording(
+            width = 1280,
+            height = 720,
+            muxerFactory = muxerFactory,
+            metadataRepository = metadataRepository,
+            sessionId = "broadcast-1",
+        )
+        advanceUntilIdle()
+
+        viewModel.saveOriginalClip()
+        advanceUntilIdle()
+
+        assertEquals("content://clips/1", viewModel.uiState.value.savedOriginalClipUri)
+        assertFalse(viewModel.uiState.value.isSavingOriginalClip)
+    }
+
+    @Test
+    fun `saveOriginalClip 실패 시 에러가 상태에 설정됨`() = runTest {
+        val muxerFactory = mockk<VideoMuxerFactory>()
+        val metadataRepository = mockk<MetadataRepository>(relaxed = true)
+        every {
+            cameraRecordingUseCase.startBroadcastRecording(any(), any(), any(), any(), any())
+        } returns Result.success(Unit)
+        every {
+            cameraRecordingUseCase.startOriginalClipBuffer(any(), any(), any(), any())
+        } returns Result.success(Unit)
+        coEvery {
+            cameraRecordingUseCase.saveOriginalClipToGallery()
+        } returns Result.failure(RuntimeException("clip buffer empty"))
+
+        viewModel.startCamera()
+        advanceUntilIdle()
+        viewModel.startDetection()
+        viewModel.startBroadcastRecording(
+            width = 1280,
+            height = 720,
+            muxerFactory = muxerFactory,
+            metadataRepository = metadataRepository,
+            sessionId = "broadcast-1",
+        )
+        advanceUntilIdle()
+
+        viewModel.saveOriginalClip()
+        advanceUntilIdle()
+
+        assertEquals("clip buffer empty", viewModel.uiState.value.originalClipSaveError)
+        assertFalse(viewModel.uiState.value.isSavingOriginalClip)
+    }
+
     // ========================================================
     // 렌즈 전환 테스트
     // ========================================================
@@ -525,12 +643,12 @@ class CameraViewModelTest {
             trackingIds = listOf(1),
             faceLabels = listOf(false)
         )
-        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any()) } returns frame
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returns frame
 
         viewModel.startCamera()
         advanceUntilIdle()
         viewModel.startDetection()
-        viewModel.processFrameSync(buffer, 640, 480)
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
         assertEquals(1, viewModel.uiState.value.detectedFaces.size)
 
         viewModel.switchLensFacing()
@@ -547,5 +665,34 @@ class CameraViewModelTest {
         advanceUntilIdle()
 
         verify(exactly = 1) { cameraAnalysisUseCase.clearProcessingThreadCache() }
+    }
+
+    @Test
+    fun `resetSessionState 호출 시 owner 관련 UI 상태가 초기화되고 UseCase가 호출됨`() = runTest {
+        val buffer = createTestBuffer()
+        val frame = ProcessedFrame(
+            faces = listOf(DetectedFace(10, 20, 100, 100, 0.9f)),
+            frameWidth = 640,
+            frameHeight = 480,
+            timestampMs = 0L,
+            trackingIds = listOf(7),
+            faceLabels = listOf(true),
+        )
+        every { cameraAnalysisUseCase.processFrame(buffer, 640, 480, any(), any()) } returns frame
+
+        viewModel.startCamera()
+        advanceUntilIdle()
+        viewModel.startDetection()
+        viewModel.processFrameSync(buffer, 640, 480, 1_000_000L)
+
+        assertFalse(viewModel.uiState.value.detectedFaces.isEmpty())
+
+        viewModel.resetSessionState()
+
+        assertTrue(viewModel.uiState.value.detectedFaces.isEmpty())
+        assertTrue(viewModel.uiState.value.faceLabels.isEmpty())
+        assertTrue(viewModel.uiState.value.trackingIds.isEmpty())
+        assertTrue(viewModel.uiState.value.registeredOwnerThumbnails.isEmpty())
+        verify(exactly = 1) { cameraAnalysisUseCase.resetSessionState() }
     }
 }

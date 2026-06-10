@@ -25,7 +25,7 @@ class StreamingMetadataTest {
         assertEquals(133333L, metadata.ptsUs)
         assertEquals(1, metadata.faces.size)
         assertEquals(0, metadata.faces[0].trackingId)
-        assertEquals(265, metadata.faces[0].tdmm.coeffs.size)
+        assertEquals(265, metadata.faces[0].tdmm!!.coeffs.size)
     }
 
     @Test
@@ -40,6 +40,16 @@ class StreamingMetadataTest {
     }
 
     @Test
+    fun `FrameMetadata는 bbox 기준 frame geometry를 포함한다`() {
+        val fields = FrameMetadata::class.java.declaredFields.map { it.name }.toSet()
+
+        assertTrue(fields.contains("frameWidth"))
+        assertTrue(fields.contains("frameHeight"))
+        assertTrue(fields.contains("rotation"))
+        assertTrue(fields.contains("mirrored"))
+    }
+
+    @Test
     fun `BBox 좌표가 정확히 저장된다`() {
         val bbox = BBox(x = 100, y = 200, width = 50, height = 60)
 
@@ -47,5 +57,16 @@ class StreamingMetadataTest {
         assertEquals(200, bbox.y)
         assertEquals(50, bbox.width)
         assertEquals(60, bbox.height)
+    }
+
+    @Test
+    fun `tdmm 없이도 얼굴 metadata를 구성할 수 있다`() {
+        val face = FaceData(
+            trackingId = 1,
+            bbox = BBox(x = 10, y = 20, width = 30, height = 40),
+            tdmm = null,
+        )
+
+        assertNull(face.tdmm)
     }
 }

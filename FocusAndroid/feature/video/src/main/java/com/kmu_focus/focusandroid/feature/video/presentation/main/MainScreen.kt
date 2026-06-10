@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,6 +33,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosGradientBackground
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPalette
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPanelHeader
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosPrimaryButton
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSectionCard
+import com.kmu_focus.focusandroid.core.ui.ios.FocusIosSecondaryButton
 import com.kmu_focus.focusandroid.feature.video.presentation.videoplayer.VideoPlayerScreen
 import com.kmu_focus.focusandroid.feature.video.presentation.videosave.VideoSaveScreen
 import com.kmu_focus.focusandroid.feature.video.presentation.videosave.VideoSaveViewModel
@@ -105,11 +112,17 @@ fun MainScreen(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
+    BackHandler(enabled = uiState.selectedVideoUri != null) {
+        viewModel.onClearSelection()
+    }
+    BackHandler(enabled = uiState.selectedVideoUri == null && onBackToModeSelection != null) {
+        onBackToModeSelection?.invoke()
+    }
+
+    FocusIosGradientBackground(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+        ) {
         val showTopControls = !isVideoFullScreen && uiState.selectedVideoUri == null
 
         if (showTopControls) {
@@ -119,149 +132,96 @@ fun MainScreen(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Surface(
-                    shape = RoundedCornerShape(30.dp),
-                    tonalElevation = 4.dp,
-                    color = MaterialTheme.colorScheme.surface,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(22.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text(
-                            text = "LOCAL ARCHIVE",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
+                    FocusIosPanelHeader(
+                        title = "동영상 분석",
+                        subtitle = "기존 영상을 불러와 owner를 등록하고 분석, 저장 흐름까지 이어갑니다.",
+                    )
+                    if (onBackToModeSelection != null) {
+                        FocusIosSecondaryButton(
+                            text = "이전 화면으로 돌아가기",
+                            onClick = onBackToModeSelection,
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                        Text(
-                            text = "동영상 분석",
-                            style = MaterialTheme.typography.headlineSmall,
-                        )
-                        Text(
-                            text = "기존 영상을 불러와 owner를 등록하고 분석, 저장 흐름까지 이어갑니다.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (onBackToModeSelection != null) {
-                            OutlinedButton(
-                                onClick = onBackToModeSelection,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("모드 선택으로 돌아가기")
-                            }
-                        }
                     }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 2.dp,
-                    color = MaterialTheme.colorScheme.surface,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Owner 등록",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = FocusIosPalette.Text,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = "Owner 등록",
-                            style = MaterialTheme.typography.titleMedium,
+                        FocusIosPrimaryButton(
+                            text = "여러 명 추가",
+                            onClick = {
+                                multiPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
                         )
-                        Row(
+                        if (uiState.addedOwnerUris.isNotEmpty()) {
+                            FocusIosSecondaryButton(
+                                text = "전체 삭제",
+                                onClick = { viewModel.clearOwners() },
+                                modifier = Modifier.weight(1f),
+                                accentColor = FocusIosPalette.Danger,
+                            )
+                        }
+                    }
+
+                    if (uiState.addedOwnerUris.isNotEmpty()) {
+                        Text(
+                            text = "등록된 소유자 ${uiState.addedOwnerUris.size}명",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = FocusIosPalette.TextMuted,
+                        )
+                        LazyRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Button(
-                                onClick = {
-                                    multiPickerLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Text("여러 명 추가")
-                            }
-                            if (uiState.addedOwnerUris.isNotEmpty()) {
-                                OutlinedButton(
-                                    onClick = { viewModel.clearOwners() },
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    Text("전체 삭제")
-                                }
+                            items(uiState.addedOwnerUris) { uri ->
+                                OwnerThumbnail(uri = uri)
                             }
                         }
-
-                        if (uiState.addedOwnerUris.isNotEmpty()) {
-                            Text(
-                                text = "등록된 소유자 ${uiState.addedOwnerUris.size}명",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                items(uiState.addedOwnerUris) { uri ->
-                                    OwnerThumbnail(uri = uri)
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = "분석 정확도를 위해 owner 이미지를 먼저 등록하세요.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                    } else {
+                        Text(
+                            text = "분석 정확도를 위해 owner 이미지를 먼저 등록하세요.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = FocusIosPalette.TextMuted,
+                        )
                     }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 2.dp,
-                    color = MaterialTheme.colorScheme.surface,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                    ) {
-                        Text(
-                            text = "분석할 동영상",
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        VideoUploadScreen(
-                            onVideoSelected = { uri -> viewModel.onVideoSelected(uri) },
-                        )
-                    }
+                FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "분석할 동영상",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = FocusIosPalette.Text,
+                    )
+                    VideoUploadScreen(
+                        onVideoSelected = { uri -> viewModel.onVideoSelected(uri) },
+                    )
                 }
 
                 if (saveUiState.isSaving || saveUiState.savedFilePath != null || saveUiState.error != null) {
-                    Surface(
-                        shape = RoundedCornerShape(28.dp),
-                        tonalElevation = 2.dp,
-                        color = MaterialTheme.colorScheme.surface,
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp),
-                        ) {
-                            Text(
-                                text = "저장 상태",
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            VideoSaveScreen(
-                                videoUri = uiState.selectedVideoUri.orEmpty(),
-                                viewModel = saveViewModel,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                    FocusIosSectionCard(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "저장 상태",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = FocusIosPalette.Text,
+                        )
+                        VideoSaveScreen(
+                            videoUri = uiState.selectedVideoUri.orEmpty(),
+                            viewModel = saveViewModel,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }
@@ -286,6 +246,7 @@ fun MainScreen(
                 }
             )
         }
+    }
     }
 }
 

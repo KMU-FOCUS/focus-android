@@ -50,6 +50,22 @@ class PlaybackAnalysisRepositoryImpl @Inject constructor(
     private val metadataStateLock = Any()
     private var metadataRepository: MetadataRepository? = null
     private var metadataSessionId: String? = null
+    private var sourceVideoWidth: Int = 0
+    private var sourceVideoHeight: Int = 0
+
+    override fun updateSourceVideoSize(
+        width: Int,
+        height: Int,
+    ) {
+        synchronized(metadataStateLock) {
+            sourceVideoWidth = width.coerceAtLeast(0)
+            sourceVideoHeight = height.coerceAtLeast(0)
+        }
+    }
+
+    override fun markTrackAsOwner(trackId: Int) {
+        frameProcessor.markTrackAsOwner(trackId)
+    }
 
     override fun processFrame(
         buffer: ByteBuffer,
@@ -313,8 +329,16 @@ class PlaybackAnalysisRepositoryImpl @Inject constructor(
 
     private fun enqueueMetadataFrame(frame: ProcessedFrame) {
         val frameExport = frame.frameExport ?: return
-        val sessionId = synchronized(metadataStateLock) {
-            metadataSessionId ?: UUID.randomUUID().toString().also { metadataSessionId = it }
+        val (sessionId, coordinateSpace) = synchronized(metadataStateLock) {
+            val resolvedSessionId = metadataSessionId
+                ?: UUID.randomUUID().toString().also { metadataSessionId = it }
+            val resolvedCoordinateSpace = MetadataMapper.CoordinateSpace(
+                analysisWidth = frame.frameWidth,
+                analysisHeight = frame.frameHeight,
+                sourceWidth = sourceVideoWidth,
+                sourceHeight = sourceVideoHeight,
+            ).takeIf(MetadataMapper.CoordinateSpace::isValid)
+            resolvedSessionId to resolvedCoordinateSpace
         }
         val metadata = MetadataMapper.mapFrame(
             sessionId = sessionId,
@@ -330,6 +354,7 @@ class PlaybackAnalysisRepositoryImpl @Inject constructor(
                     isOwner = face.isOwner,
                 )
             },
+            coordinateSpace = coordinateSpace,
         )
 
         launchMetadataJob {

@@ -4,6 +4,8 @@ import com.kmu_focus.focusandroid.core.network.domain.TokenStore
 import com.kmu_focus.focusandroid.core.network.dto.ApiResponse
 import com.kmu_focus.focusandroid.feature.account.data.oauth.ChzzkOAuthConfig
 import com.kmu_focus.focusandroid.feature.account.data.oauth.ChzzkOAuthConnectUrlValidator
+import com.kmu_focus.focusandroid.feature.account.data.oauth.YoutubeOAuthConfig
+import com.kmu_focus.focusandroid.feature.account.data.oauth.YoutubeOAuthConnectUrlValidator
 import com.kmu_focus.focusandroid.feature.account.data.remote.AccountApi
 import com.kmu_focus.focusandroid.feature.account.data.remote.dto.ChzzkConnectResponseDto
 import com.kmu_focus.focusandroid.feature.account.data.remote.dto.ChzzkConnectionStatusResponseDto
@@ -11,6 +13,7 @@ import com.kmu_focus.focusandroid.feature.account.domain.model.AccountError
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import java.io.IOException
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
@@ -24,6 +27,7 @@ class AccountRepositoryImplTest {
     private lateinit var accountApi: AccountApi
     private lateinit var tokenStore: TokenStore
     private lateinit var validator: ChzzkOAuthConnectUrlValidator
+    private lateinit var youtubeValidator: YoutubeOAuthConnectUrlValidator
     private lateinit var repository: AccountRepositoryImpl
 
     @Before
@@ -37,7 +41,14 @@ class AccountRepositoryImplTest {
                 authBaseUrl = "https://chzzk.naver.com/account-interlock",
             ),
         )
-        repository = AccountRepositoryImpl(accountApi, tokenStore, validator)
+        youtubeValidator = YoutubeOAuthConnectUrlValidator(
+            config = YoutubeOAuthConfig(
+                clientId = "youtube-client-id",
+                redirectUri = "https://api.focus.ai.kr/api/v1/platforms/youtube/callback",
+                authBaseUrl = "https://accounts.google.com/o/oauth2/v2/auth",
+            ),
+        )
+        repository = AccountRepositoryImpl(accountApi, tokenStore, validator, youtubeValidator)
     }
 
     @Test
@@ -137,6 +148,16 @@ class AccountRepositoryImplTest {
 
         assertTrue(result.isSuccess)
         coVerify(exactly = 1) { accountApi.disconnectChzzk() }
+    }
+
+    @Test
+    fun `로그아웃 서버 요청이 실패해도 로컬 토큰을 삭제하고 성공을 반환한다`() = runTest {
+        coEvery { accountApi.logout() } throws IOException("offline")
+
+        val result = repository.logout()
+
+        assertTrue(result.isSuccess)
+        coVerify(exactly = 1) { tokenStore.clear() }
     }
 
     private fun buildAuthUrl(): String {

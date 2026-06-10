@@ -64,4 +64,25 @@ class CreateBroadcastUseCaseTest {
 
         assertTrue(result.isFailure)
     }
+
+    @Test
+    fun `방송 제목 생성 시 허용되지 않는 문자를 제거하고 길이를 제한한다`() = runTest {
+        val expected = Broadcast(
+            broadcastId = "broadcast-1",
+            title = "포커스 방송 2026",
+            memberName = "홍길동",
+            memberId = "member-1",
+            status = BroadcastStatus.READY,
+            streamKey = "stream-key-abc",
+            hlsUrl = null,
+            startedAt = null,
+            endedAt = null,
+        )
+        coEvery { repository.createBroadcast("포커스 방송 2026") } returns Result.success(expected)
+
+        val result = useCase("  포커스🔥🔥   방송@@@ 2026  ")
+
+        assertTrue(result.isSuccess)
+        coVerify(exactly = 1) { repository.createBroadcast("포커스 방송 2026") }
+    }
 }

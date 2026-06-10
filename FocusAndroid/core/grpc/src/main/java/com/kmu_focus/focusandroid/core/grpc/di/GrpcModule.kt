@@ -17,10 +17,15 @@ object GrpcModule {
     @Provides
     @Singleton
     fun provideManagedChannel(): ManagedChannel {
-        return OkHttpChannelBuilder
-            .forAddress(BuildConfig.GRPC_SERVER_HOST, BuildConfig.GRPC_SERVER_PORT)
-            .usePlaintext()
-            .build()
+        val host = BuildConfig.GRPC_SERVER_HOST
+        val port = BuildConfig.GRPC_SERVER_PORT
+        val useTls = BuildConfig.GRPC_USE_TLS
+        val builder = OkHttpChannelBuilder.forAddress(host, port)
+        return if (useTls) {
+            builder.useTransportSecurity().build()
+        } else {
+            builder.usePlaintext().build()
+        }
     }
 
     @Provides

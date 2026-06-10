@@ -23,7 +23,16 @@ class TrackLabelState(
     private val state = mutableMapOf<Int, Entry>()
 
     fun beginFrame(seenTrackIds: Set<Int>) {
-        for ((id, entry) in state) if (id !in seenTrackIds) entry.wasAbsentLastFrame = true
+        val iterator = state.iterator()
+        while (iterator.hasNext()) {
+            val (id, entry) = iterator.next()
+            if (id in seenTrackIds) continue
+            if (entry.isOwner == null) {
+                iterator.remove()
+            } else {
+                entry.wasAbsentLastFrame = true
+            }
+        }
     }
 
     fun recordFrameSeen(trackId: Int) {
@@ -44,6 +53,15 @@ class TrackLabelState(
         return when (entry.isOwner) {
             null -> entry.framesSeen > skipFrames && entry.embeddings.size < collectFrames && isFrontal
             false -> !entry.frontFaceChecked && isFrontal
+            true -> false
+        }
+    }
+
+    fun needsRecognition(trackId: Int): Boolean {
+        val entry = state[trackId] ?: return false
+        return when (entry.isOwner) {
+            null -> entry.framesSeen > skipFrames && entry.embeddings.size < collectFrames
+            false -> !entry.frontFaceChecked
             true -> false
         }
     }
@@ -74,11 +92,18 @@ class TrackLabelState(
 
     fun getLabel(trackId: Int): Boolean? = state[trackId]?.isOwner
     fun getSimilarity(trackId: Int): Float = state[trackId]?.similarity ?: 0f
-    fun isPending(trackId: Int): Boolean = state[trackId]?.isOwner == null
+    fun isPending(trackId: Int): Boolean = state[trackId]?.let { it.isOwner == null } ?: false
     fun getEmbeddingCount(trackId: Int): Int = state[trackId]?.embeddings?.size ?: 0
     fun getFramesSeen(trackId: Int): Int = state[trackId]?.framesSeen ?: 0
     fun getCollectFrames(): Int = collectFrames
     fun getFrontFaceChecked(trackId: Int): Boolean = state[trackId]?.frontFaceChecked ?: false
+    fun markOwner(trackId: Int) {
+        val entry = state.getOrPut(trackId) { Entry(mutableListOf()) }
+        entry.embeddings.clear()
+        entry.isOwner = true
+        entry.frontFaceChecked = true
+        entry.wasAbsentLastFrame = false
+    }
     fun removeTrack(trackId: Int) { state.remove(trackId) }
     fun clear() { state.clear() }
 }

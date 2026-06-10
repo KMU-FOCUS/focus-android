@@ -7,97 +7,62 @@ import java.nio.ByteOrder
 
 class MosaicProgram {
 
-    private var copyProgramId = 0
-    private var kawaseProgramId = 0
     private var compositeProgramId = 0
     private var vaoId = 0
     private var vboId = 0
 
-    private var copyTextureLoc = 0
-    private var copySourceRectLoc = 0
-    private var kawaseTextureLoc = 0
-    private var kawaseTexelSizeLoc = 0
-    private var kawaseOffsetLoc = 0
     private var compositeTextureLoc = 0
     private var compositeFaceCountLoc = 0
     private var compositeEllipseCenterLoc = 0
-    private var compositeEllipseRadiusLoc = 0
+    private var compositeEllipseHorizontalRadiusLoc = 0
+    private var compositeEllipseVerticalRadiusLoc = 0
     private var compositeEllipseAngleLoc = 0
+    private var compositeTopClipLoc = 0
+    private var compositeMaskColorLoc = 0
     private var compositeRegionRectLoc = 0
     private val uniformCenters = FloatArray(MAX_FACES * 2)
-    private val uniformRadii = FloatArray(MAX_FACES * 2)
+    private val uniformHorizontalRadii = FloatArray(MAX_FACES * 2)
+    private val uniformVerticalRadii = FloatArray(MAX_FACES)
     private val uniformAngles = FloatArray(MAX_FACES)
+    private val uniformTopClips = FloatArray(MAX_FACES)
+    private val uniformMaskColors = FloatArray(MAX_FACES * 3)
     private var previousFaceCount = 0
 
     fun init() {
-        copyProgramId = createProgram(VERTEX_SHADER, COPY_FRAGMENT_SHADER)
-        copyTextureLoc = GLES30.glGetUniformLocation(copyProgramId, "uTexture")
-        copySourceRectLoc = GLES30.glGetUniformLocation(copyProgramId, "uSourceRect")
-
-        kawaseProgramId = createProgram(VERTEX_SHADER, KAWASE_FRAGMENT_SHADER)
-        kawaseTextureLoc = GLES30.glGetUniformLocation(kawaseProgramId, "uTexture")
-        kawaseTexelSizeLoc = GLES30.glGetUniformLocation(kawaseProgramId, "uTexelSize")
-        kawaseOffsetLoc = GLES30.glGetUniformLocation(kawaseProgramId, "uOffsetPx")
-
         compositeProgramId = createProgram(VERTEX_SHADER, COMPOSITE_FRAGMENT_SHADER)
         compositeTextureLoc = GLES30.glGetUniformLocation(compositeProgramId, "uTexture")
         compositeFaceCountLoc = GLES30.glGetUniformLocation(compositeProgramId, "uFaceCount")
         compositeEllipseCenterLoc = GLES30.glGetUniformLocation(compositeProgramId, "uEllipseCenter[0]")
-        compositeEllipseRadiusLoc = GLES30.glGetUniformLocation(compositeProgramId, "uEllipseRadius[0]")
+        compositeEllipseHorizontalRadiusLoc = GLES30.glGetUniformLocation(compositeProgramId, "uEllipseRadiusX[0]")
+        compositeEllipseVerticalRadiusLoc = GLES30.glGetUniformLocation(compositeProgramId, "uEllipseRadiusY[0]")
         compositeEllipseAngleLoc = GLES30.glGetUniformLocation(compositeProgramId, "uEllipseAngle[0]")
+        compositeTopClipLoc = GLES30.glGetUniformLocation(compositeProgramId, "uTopClip[0]")
+        compositeMaskColorLoc = GLES30.glGetUniformLocation(compositeProgramId, "uMaskColor[0]")
         compositeRegionRectLoc = GLES30.glGetUniformLocation(compositeProgramId, "uRegionRect")
         setupVao()
     }
 
-    fun copyTextureRegion(
-        inputTexId: Int,
-        sourceRect: UvRect = UvRect.FULL,
-    ) {
-        if (copyProgramId == 0 || inputTexId == 0) return
-
-        GLES30.glUseProgram(copyProgramId)
-        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, inputTexId)
-        GLES30.glUniform1i(copyTextureLoc, 0)
-        GLES30.glUniform4f(copySourceRectLoc, sourceRect.minX, sourceRect.minY, sourceRect.maxX, sourceRect.maxY)
-        drawQuad()
-    }
-
-    fun applyKawaseBlur(
-        inputTexId: Int,
-        textureWidth: Int,
-        textureHeight: Int,
-        offsetPx: Float,
-    ) {
-        if (kawaseProgramId == 0 || inputTexId == 0 || textureWidth <= 0 || textureHeight <= 0) return
-
-        GLES30.glUseProgram(kawaseProgramId)
-        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, inputTexId)
-        GLES30.glUniform1i(kawaseTextureLoc, 0)
-        GLES30.glUniform2f(kawaseTexelSizeLoc, 1f / textureWidth.toFloat(), 1f / textureHeight.toFloat())
-        GLES30.glUniform1f(kawaseOffsetLoc, offsetPx)
-        drawQuad()
-    }
-
-    fun compositeBlurredRegion(
-        inputTexId: Int,
+    fun compositeMaskedRegion(
+        textureId: Int,
         ellipses: List<EllipseParams>,
         regionRect: UvRect,
     ) {
-        if (compositeProgramId == 0 || inputTexId == 0) return
+        if (compositeProgramId == 0 || textureId == 0) return
 
         val faceCount = updateUniformData(ellipses)
         if (faceCount == 0) return
 
         GLES30.glUseProgram(compositeProgramId)
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, inputTexId)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textureId)
         GLES30.glUniform1i(compositeTextureLoc, 0)
         GLES30.glUniform1i(compositeFaceCountLoc, faceCount)
         GLES30.glUniform2fv(compositeEllipseCenterLoc, MAX_FACES, uniformCenters, 0)
-        GLES30.glUniform2fv(compositeEllipseRadiusLoc, MAX_FACES, uniformRadii, 0)
+        GLES30.glUniform2fv(compositeEllipseHorizontalRadiusLoc, MAX_FACES, uniformHorizontalRadii, 0)
+        GLES30.glUniform1fv(compositeEllipseVerticalRadiusLoc, MAX_FACES, uniformVerticalRadii, 0)
         GLES30.glUniform1fv(compositeEllipseAngleLoc, MAX_FACES, uniformAngles, 0)
+        GLES30.glUniform1fv(compositeTopClipLoc, MAX_FACES, uniformTopClips, 0)
+        GLES30.glUniform3fv(compositeMaskColorLoc, MAX_FACES, uniformMaskColors, 0)
         GLES30.glUniform4f(
             compositeRegionRectLoc,
             regionRect.minX,
@@ -115,9 +80,15 @@ class MosaicProgram {
                 val base = index * 2
                 uniformCenters[base] = 0f
                 uniformCenters[base + 1] = 0f
-                uniformRadii[base] = 0f
-                uniformRadii[base + 1] = 0f
+                uniformHorizontalRadii[base] = 0f
+                uniformHorizontalRadii[base + 1] = 0f
+                uniformVerticalRadii[index] = 0f
                 uniformAngles[index] = 0f
+                uniformTopClips[index] = 0f
+                val colorBase = index * 3
+                uniformMaskColors[colorBase] = 0f
+                uniformMaskColors[colorBase + 1] = 0f
+                uniformMaskColors[colorBase + 2] = 0f
             }
         }
 
@@ -127,9 +98,15 @@ class MosaicProgram {
             val base = index * 2
             uniformCenters[base] = ellipse.centerX
             uniformCenters[base + 1] = ellipse.centerY
-            uniformRadii[base] = ellipse.radiusX
-            uniformRadii[base + 1] = ellipse.radiusY
+            uniformHorizontalRadii[base] = ellipse.leftRadiusX
+            uniformHorizontalRadii[base + 1] = ellipse.rightRadiusX
+            uniformVerticalRadii[index] = ellipse.radiusY
             uniformAngles[index] = ellipse.angle
+            uniformTopClips[index] = ellipse.topClip
+            val colorBase = index * 3
+            uniformMaskColors[colorBase] = ellipse.maskColorR
+            uniformMaskColors[colorBase + 1] = ellipse.maskColorG
+            uniformMaskColors[colorBase + 2] = ellipse.maskColorB
         }
         previousFaceCount = faceCount
         return faceCount
@@ -139,17 +116,22 @@ class MosaicProgram {
     fun getUniformCentersForTest(): FloatArray = uniformCenters
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    fun getUniformRadiiForTest(): FloatArray = uniformRadii
+    fun getUniformHorizontalRadiiForTest(): FloatArray = uniformHorizontalRadii
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun getUniformVerticalRadiiForTest(): FloatArray = uniformVerticalRadii
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     fun getUniformAnglesForTest(): FloatArray = uniformAngles
 
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun getUniformTopClipsForTest(): FloatArray = uniformTopClips
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    fun getUniformMaskColorsForTest(): FloatArray = uniformMaskColors
+
     fun release() {
-        deleteProgramIfNeeded(copyProgramId)
-        deleteProgramIfNeeded(kawaseProgramId)
         deleteProgramIfNeeded(compositeProgramId)
-        copyProgramId = 0
-        kawaseProgramId = 0
         compositeProgramId = 0
         if (vaoId != 0) {
             GLES30.glDeleteVertexArrays(1, intArrayOf(vaoId), 0)
@@ -260,45 +242,6 @@ class MosaicProgram {
             }
         """
 
-        private const val COPY_FRAGMENT_SHADER = """
-            #version 300 es
-            precision mediump float;
-
-            in vec2 vTexCoord;
-            uniform sampler2D uTexture;
-            uniform vec4 uSourceRect;
-            out vec4 fragColor;
-
-            void main() {
-                vec2 uv = vec2(
-                    mix(uSourceRect.x, uSourceRect.z, vTexCoord.x),
-                    mix(uSourceRect.y, uSourceRect.w, vTexCoord.y)
-                );
-                fragColor = texture(uTexture, uv);
-            }
-        """
-
-        private const val KAWASE_FRAGMENT_SHADER = """
-            #version 300 es
-            precision mediump float;
-
-            in vec2 vTexCoord;
-            uniform sampler2D uTexture;
-            uniform vec2 uTexelSize;
-            uniform float uOffsetPx;
-            out vec4 fragColor;
-
-            void main() {
-                vec2 offset = uTexelSize * uOffsetPx;
-                vec4 color = texture(uTexture, vTexCoord) * 4.0;
-                color += texture(uTexture, clamp(vTexCoord + vec2(-offset.x, -offset.y), vec2(0.0), vec2(1.0)));
-                color += texture(uTexture, clamp(vTexCoord + vec2(offset.x, -offset.y), vec2(0.0), vec2(1.0)));
-                color += texture(uTexture, clamp(vTexCoord + vec2(-offset.x, offset.y), vec2(0.0), vec2(1.0)));
-                color += texture(uTexture, clamp(vTexCoord + vec2(offset.x, offset.y), vec2(0.0), vec2(1.0)));
-                fragColor = color / 8.0;
-            }
-        """
-
         private const val COMPOSITE_FRAGMENT_SHADER = """
             #version 300 es
             precision mediump float;
@@ -308,35 +251,106 @@ class MosaicProgram {
             uniform sampler2D uTexture;
             uniform int uFaceCount;
             uniform vec2 uEllipseCenter[MAX_FACES];
-            uniform vec2 uEllipseRadius[MAX_FACES];
+            uniform vec2 uEllipseRadiusX[MAX_FACES];
+            uniform float uEllipseRadiusY[MAX_FACES];
             uniform float uEllipseAngle[MAX_FACES];
+            uniform float uTopClip[MAX_FACES];
+            uniform vec3 uMaskColor[MAX_FACES];
             uniform vec4 uRegionRect;
             out vec4 fragColor;
 
-            bool isMasked(vec2 uv) {
-                for (int i = 0; i < MAX_FACES; i++) {
-                    if (i >= uFaceCount) break;
-                    vec2 d = uv - uEllipseCenter[i];
-                    float cosA = cos(-uEllipseAngle[i]);
-                    float sinA = sin(-uEllipseAngle[i]);
-                    vec2 r = vec2(d.x * cosA - d.y * sinA, d.x * sinA + d.y * cosA);
-                    vec2 safeRadius = max(uEllipseRadius[i], vec2(0.000001));
-                    vec2 n = r / safeRadius;
-                    if (dot(n, n) <= 1.0) return true;
-                }
-                return false;
+            const float MASK_EDGE_SOFTNESS = 0.06;
+            const float TOP_EDGE_SOFTNESS = 0.04;
+
+            vec2 toNormalizedLocal(int index, vec2 uv) {
+                vec2 d = uv - uEllipseCenter[index];
+                float cosA = cos(-uEllipseAngle[index]);
+                float sinA = sin(-uEllipseAngle[index]);
+                vec2 rotated = vec2(
+                    d.x * cosA - d.y * sinA,
+                    d.x * sinA + d.y * cosA
+                );
+                float radiusX = rotated.x < 0.0 ? uEllipseRadiusX[index].x : uEllipseRadiusX[index].y;
+                vec2 safeRadius = vec2(
+                    max(radiusX, 0.000001),
+                    max(uEllipseRadiusY[index], 0.000001)
+                );
+                return rotated / safeRadius;
+            }
+
+            float maskCoverage(int index, vec2 normalized) {
+                float ellipseCoverage = 1.0 - smoothstep(
+                    1.0 - MASK_EDGE_SOFTNESS,
+                    1.0,
+                    length(normalized)
+                );
+                float topCoverage = smoothstep(
+                    uTopClip[index] - TOP_EDGE_SOFTNESS,
+                    uTopClip[index] + TOP_EDGE_SOFTNESS,
+                    normalized.y
+                );
+                return ellipseCoverage * topCoverage;
+            }
+
+            float featureFillWeight(int index, vec2 normalized) {
+                float eyeCore = (1.0 - smoothstep(0.16, 0.98, abs(normalized.x))) *
+                    smoothstep(uTopClip[index] - 0.02, uTopClip[index] + 0.44, normalized.y) *
+                    (1.0 - smoothstep(-0.10, 0.36, normalized.y));
+                float noseCore = (1.0 - smoothstep(0.14, 0.62, abs(normalized.x))) *
+                    smoothstep(-0.10, 0.18, normalized.y) *
+                    (1.0 - smoothstep(0.66, 0.92, normalized.y));
+                float mouthCore = (1.0 - smoothstep(0.16, 0.72, abs(normalized.x))) *
+                    smoothstep(0.08, 0.34, normalized.y) *
+                    (1.0 - smoothstep(0.88, 1.08, normalized.y));
+                float centerCore = (1.0 - smoothstep(0.10, 0.74, abs(normalized.x))) *
+                    smoothstep(uTopClip[index] + 0.10, uTopClip[index] + 0.56, normalized.y) *
+                    (1.0 - smoothstep(0.92, 1.10, normalized.y));
+                float featureCore = max(max(eyeCore, noseCore), max(mouthCore, centerCore * 0.94));
+                float coreAlpha = step(0.08, featureCore);
+                float shellMask = (1.0 - smoothstep(0.42, 1.02, abs(normalized.x))) *
+                    smoothstep(uTopClip[index] - 0.02, uTopClip[index] + 0.56, normalized.y) *
+                    (1.0 - smoothstep(1.00, 1.16, normalized.y));
+                float edgeFeather = 1.0 - smoothstep(
+                    0.50,
+                    1.02,
+                    length(vec2(normalized.x * 0.92, normalized.y * 0.86))
+                );
+                float shellAlpha = shellMask * edgeFeather;
+                return clamp(coreAlpha + ((1.0 - coreAlpha) * shellAlpha), 0.0, 1.0);
+            }
+
+            vec3 resolveSkinFillColor(int index, vec2 normalized) {
+                vec3 baseColor = uMaskColor[index];
+                float verticalShade = mix(1.02, 0.97, smoothstep(-0.04, 0.82, normalized.y));
+                float horizontalShade = mix(1.0, 0.99, smoothstep(0.0, 1.0, abs(normalized.x)));
+                vec3 shaded = baseColor * (verticalShade * horizontalShade);
+                shaded.r *= 1.01;
+                shaded.b *= 0.995;
+                return clamp(mix(shaded, baseColor, 0.58), vec3(0.0), vec3(1.0));
             }
 
             void main() {
-                if (!isMasked(vTexCoord)) {
-                    discard;
-                }
                 vec2 regionSize = max(uRegionRect.zw - uRegionRect.xy, vec2(0.000001));
                 vec2 localUv = (vTexCoord - uRegionRect.xy) / regionSize;
                 if (localUv.x < 0.0 || localUv.x > 1.0 || localUv.y < 0.0 || localUv.y > 1.0) {
                     discard;
                 }
-                fragColor = texture(uTexture, localUv);
+                vec3 originalColor = texture(uTexture, vTexCoord).rgb;
+
+                for (int i = 0; i < MAX_FACES; i++) {
+                    if (i >= uFaceCount) break;
+                    vec2 normalized = toNormalizedLocal(i, vTexCoord);
+                    float coverage = maskCoverage(i, normalized);
+                    if (coverage <= 0.0) {
+                        continue;
+                    }
+                    float fillWeight = coverage * featureFillWeight(i, normalized);
+                    vec3 fillColor = resolveSkinFillColor(i, normalized);
+                    fragColor = vec4(mix(originalColor, fillColor, fillWeight), 1.0);
+                    return;
+                }
+
+                discard;
             }
         """
 

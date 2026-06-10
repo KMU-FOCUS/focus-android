@@ -1,7 +1,6 @@
 package com.kmu_focus.focusandroid.core.metadata.di
 
 import android.content.Context
-import android.os.Environment
 import com.kmu_focus.focusandroid.core.metadata.data.local.JsonMetadataRepository
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import dagger.Binds
@@ -35,8 +34,7 @@ abstract class MetadataModule {
         fun provideMetadataOutputDir(
             @ApplicationContext context: Context,
         ): File {
-            val externalDocuments = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
-            return File(externalDocuments ?: context.filesDir, "metadata").apply { mkdirs() }
+            return File(context.noBackupFilesDir, "metadata").apply { mkdirs() }
         }
     }
 }

@@ -2,7 +2,7 @@ package com.kmu_focus.focusandroid.feature.auth.domain.usecase
 
 import com.kmu_focus.focusandroid.feature.auth.domain.model.AuthError
 import com.kmu_focus.focusandroid.feature.auth.domain.repository.ServerAuthRepository
-import com.kmu_focus.focusandroid.feature.auth.domain.session.AuthSessionManager
+import com.kmu_focus.focusandroid.core.session.AuthSessionManager
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk

@@ -60,6 +60,7 @@ dependencies {
 
     // Modules
     implementation(project(":core:network"))
+    api(project(":core:session"))
 
     // Network
     implementation(libs.retrofit)

@@ -66,8 +66,11 @@ abstract class NetworkModule {
 
         private fun createLoggingInterceptor(): HttpLoggingInterceptor {
             return HttpLoggingInterceptor().apply {
+                redactHeader("Authorization")
+                redactHeader("Cookie")
+                redactHeader("Set-Cookie")
                 level = if (com.kmu_focus.focusandroid.core.network.BuildConfig.DEBUG) {
-                    HttpLoggingInterceptor.Level.BODY
+                    HttpLoggingInterceptor.Level.BASIC
                 } else {
                     HttpLoggingInterceptor.Level.NONE
                 }

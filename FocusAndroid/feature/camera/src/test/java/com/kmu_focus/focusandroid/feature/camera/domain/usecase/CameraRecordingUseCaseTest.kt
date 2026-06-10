@@ -1,10 +1,16 @@
 package com.kmu_focus.focusandroid.feature.camera.domain.usecase
 
+import com.kmu_focus.focusandroid.core.media.api.recorder.EncoderSurfaceHandle
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
+import com.kmu_focus.focusandroid.core.media.domain.entity.EncoderConfig
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraRecordingRepository
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import java.io.File
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -46,13 +52,13 @@ class CameraRecordingUseCaseTest {
 
     @Test
     fun `startRecording에서 onSurfaceReady 콜백이 repository에 전달됨`() {
-        var capturedCallback: ((Any, Int, Int) -> Unit)? = null
+        var capturedCallback: ((EncoderSurfaceHandle, Int, Int) -> Unit)? = null
         every { repository.startRecording(any(), any(), any()) } answers {
             capturedCallback = thirdArg()
             File.createTempFile("test", ".mp4")
         }
 
-        val onSurface: (Any, Int, Int) -> Unit = { _, _, _ -> }
+        val onSurface: (EncoderSurfaceHandle, Int, Int) -> Unit = { _, _, _ -> }
         useCase.startRecording(1920, 1080, onSurface)
 
         assertNotNull(capturedCallback)
@@ -68,6 +74,99 @@ class CameraRecordingUseCaseTest {
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is RuntimeException)
+    }
+
+    @Test
+    fun `startBroadcastRecording 호출 시 encoderConfig를 repository에 전달한다`() {
+        val muxerFactory = mockk<VideoMuxerFactory>()
+        val encoderConfig = EncoderConfig(
+            bitrate = 5_000_000,
+            frameRate = 30,
+            iFrameIntervalSec = 1,
+        )
+        every {
+            repository.startBroadcastRecording(
+                width = 1280,
+                height = 720,
+                muxerFactory = muxerFactory,
+                onSurfaceReady = any(),
+                encoderConfig = encoderConfig,
+            )
+        } returns Unit
+
+        val result = useCase.startBroadcastRecording(
+            width = 1280,
+            height = 720,
+            muxerFactory = muxerFactory,
+            onSurfaceReady = { _, _, _ -> },
+            encoderConfig = encoderConfig,
+        )
+
+        assertTrue(result.isSuccess)
+        verify(exactly = 1) {
+            repository.startBroadcastRecording(
+                width = 1280,
+                height = 720,
+                muxerFactory = muxerFactory,
+                onSurfaceReady = any(),
+                encoderConfig = encoderConfig,
+            )
+        }
+    }
+
+    @Test
+    fun `startOriginalClipBuffer 호출 시 encoderConfig를 repository에 전달한다`() {
+        val encoderConfig = EncoderConfig(
+            bitrate = 4_000_000,
+            frameRate = 30,
+            iFrameIntervalSec = 1,
+        )
+        every {
+            repository.startOriginalClipBuffer(
+                width = 1280,
+                height = 720,
+                onSurfaceReady = any(),
+                encoderConfig = encoderConfig,
+            )
+        } returns Unit
+
+        val result = useCase.startOriginalClipBuffer(
+            width = 1280,
+            height = 720,
+            onSurfaceReady = { _, _, _ -> },
+            encoderConfig = encoderConfig,
+        )
+
+        assertTrue(result.isSuccess)
+        verify(exactly = 1) {
+            repository.startOriginalClipBuffer(
+                width = 1280,
+                height = 720,
+                onSurfaceReady = any(),
+                encoderConfig = encoderConfig,
+            )
+        }
+    }
+
+    @Test
+    fun `saveOriginalClipToGallery 성공 시 gallery uri를 반환한다`() = runTest {
+        coEvery { repository.saveOriginalClipToGallery() } returns "content://clips/1"
+
+        val result = useCase.saveOriginalClipToGallery()
+
+        assertTrue(result.isSuccess)
+        assertEquals("content://clips/1", result.getOrNull())
+        coVerify(exactly = 1) { repository.saveOriginalClipToGallery() }
+    }
+
+    @Test
+    fun `stopOriginalClipBuffer 호출 시 repository에 위임된다`() {
+        every { repository.stopOriginalClipBuffer() } returns Unit
+
+        val result = useCase.stopOriginalClipBuffer()
+
+        assertTrue(result.isSuccess)
+        verify(exactly = 1) { repository.stopOriginalClipBuffer() }
     }
 
     // --- stopRecording 테스트 ---

@@ -1,6 +1,7 @@
 package com.kmu_focus.focusandroid.feature.video.data.repository
 
 import android.util.Log
+import com.kmu_focus.focusandroid.core.media.api.recorder.EncoderSurfaceHandle
 import com.kmu_focus.focusandroid.core.media.data.local.VideoLocalDataSource
 import com.kmu_focus.focusandroid.core.media.data.recorder.AudioTrackExtractor
 import com.kmu_focus.focusandroid.core.media.data.recorder.RealTimeRecorder
@@ -19,7 +20,7 @@ class RecordingRepositoryImpl @Inject constructor(
     override fun startRecording(
         width: Int,
         height: Int,
-        onSurfaceReady: (encoderSurface: Any, width: Int, height: Int) -> Unit,
+        onSurfaceReady: (encoderSurface: EncoderSurfaceHandle, width: Int, height: Int) -> Unit,
         sourceUri: String?,
         audioStartPositionMs: Long,
     ): File {

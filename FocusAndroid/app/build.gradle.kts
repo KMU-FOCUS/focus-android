@@ -78,6 +78,7 @@ dependencies {
     implementation(project(":feature:auth"))
     implementation(project(":feature:account"))
     implementation(project(":feature:broadcast"))
+    implementation(project(":feature:metadatareview"))
     implementation(project(":core:ai"))
     implementation(project(":core:grpc"))
     implementation(project(":core:media"))
@@ -95,6 +96,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.coil.compose)
 
     // AI & Computer Vision (S25 Optimized)
     implementation(libs.opencv.android)

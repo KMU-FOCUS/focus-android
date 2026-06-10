@@ -97,10 +97,76 @@ class FaceEllipseCalculatorTest {
         assertEquals(1, result.size)
         val ellipse = result.first()
         assertEquals(0.30f, ellipse.centerX, EPSILON)
-        assertEquals(0.275f, ellipse.centerY, EPSILON)
-        assertEquals(0.224f, ellipse.radiusX, EPSILON)
-        assertEquals(0.378f, ellipse.radiusY, EPSILON)
+        assertEquals(0.305f, ellipse.centerY, EPSILON)
+        assertEquals(0.2255f, ellipse.radiusX, EPSILON)
+        assertEquals(0.3228f, ellipse.radiusY, EPSILON)
         assertEquals(0f, ellipse.angle, EPSILON)
+        assertEquals(-0.62f, ellipse.topClip, EPSILON)
+    }
+
+    @Test
+    fun `측면 얼굴은 비대칭 가로 반경과 더 높은 상단 커버리지를 가진다`() {
+        val frontal = faceWithLandmarks(
+            rightEye = Point2f(40f, 40f),
+            leftEye = Point2f(80f, 40f),
+            nose = Point2f(60f, 58f),
+            rightMouth = Point2f(50f, 90f),
+            leftMouth = Point2f(70f, 90f),
+        )
+        val profile = faceWithLandmarks(
+            rightEye = Point2f(40f, 40f),
+            leftEye = Point2f(80f, 40f),
+            nose = Point2f(76f, 58f),
+            rightMouth = Point2f(50f, 90f),
+            leftMouth = Point2f(70f, 90f),
+        )
+
+        val frontalEllipse = FaceEllipseCalculator.calculate(
+            ProcessedFrame(
+                faces = listOf(frontal),
+                frameWidth = 200,
+                frameHeight = 200,
+                timestampMs = 1000L,
+                faceLabels = listOf(false),
+            )
+        ).first()
+        val profileEllipse = FaceEllipseCalculator.calculate(
+            ProcessedFrame(
+                faces = listOf(profile),
+                frameWidth = 200,
+                frameHeight = 200,
+                timestampMs = 1000L,
+                faceLabels = listOf(false),
+            )
+        ).first()
+
+        assertTrue(maxOf(profileEllipse.leftRadiusX, profileEllipse.rightRadiusX) > frontalEllipse.radiusX)
+        assertTrue(profileEllipse.topClip < frontalEllipse.topClip)
+        assertEquals(frontalEllipse.leftRadiusX, frontalEllipse.rightRadiusX, EPSILON)
+        assertTrue(kotlin.math.abs(profileEllipse.leftRadiusX - profileEllipse.rightRadiusX) > EPSILON)
+    }
+
+    @Test
+    fun `눈 기울기 각도는 완만하게 감쇠되어 마스크가 과도하게 회전하지 않는다`() {
+        val ellipse = FaceEllipseCalculator.calculate(
+            ProcessedFrame(
+                faces = listOf(
+                    faceWithLandmarks(
+                        rightEye = Point2f(40f, 40f),
+                        leftEye = Point2f(80f, 60f),
+                        nose = Point2f(60f, 68f),
+                        rightMouth = Point2f(50f, 90f),
+                        leftMouth = Point2f(70f, 90f),
+                    )
+                ),
+                frameWidth = 200,
+                frameHeight = 200,
+                timestampMs = 1000L,
+                faceLabels = listOf(false),
+            )
+        ).first()
+
+        assertEquals(0.0835f, ellipse.angle, EPSILON)
     }
 
     @Test
@@ -134,6 +200,29 @@ class FaceEllipseCalculatorTest {
             width = 80,
             height = 80,
             confidence = 0.9f,
+        )
+    }
+
+    private fun faceWithLandmarks(
+        rightEye: Point2f,
+        leftEye: Point2f,
+        nose: Point2f,
+        rightMouth: Point2f,
+        leftMouth: Point2f,
+    ): DetectedFace {
+        return DetectedFace(
+            x = 20,
+            y = 30,
+            width = 100,
+            height = 80,
+            confidence = 0.9f,
+            landmarks = FaceLandmarks5(
+                rightEye = rightEye,
+                leftEye = leftEye,
+                nose = nose,
+                rightMouth = rightMouth,
+                leftMouth = leftMouth,
+            ),
         )
     }
 

@@ -3,6 +3,7 @@ package com.kmu_focus.focusandroid.feature.camera.domain.usecase
 import com.kmu_focus.focusandroid.feature.camera.domain.entity.OwnerRegistrationResult
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraAnalysisRepository
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.metadata.domain.repository.MetadataRepository
 import java.nio.ByteBuffer
 import javax.inject.Inject
@@ -10,16 +11,36 @@ import javax.inject.Inject
 class CameraAnalysisUseCase @Inject constructor(
     private val cameraAnalysisRepository: CameraAnalysisRepository,
 ) {
+    fun setPrivacyMode(mode: PrivacyMode) {
+        cameraAnalysisRepository.setPrivacyMode(mode)
+    }
+
+    fun updateSourceFrameSize(
+        width: Int,
+        height: Int,
+    ) {
+        cameraAnalysisRepository.updateSourceFrameSize(width, height)
+    }
+
+    fun setBroadcastSourceOverride(
+        width: Int,
+        height: Int,
+    ) {
+        cameraAnalysisRepository.setBroadcastSourceOverride(width, height)
+    }
+
     fun processFrame(
         rgbaBuffer: ByteBuffer,
         width: Int,
         height: Int,
         timestampMs: Long,
+        timestampUs: Long = timestampMs * 1000L,
     ): ProcessedFrame = cameraAnalysisRepository.processFrame(
         rgbaBuffer = rgbaBuffer,
         width = width,
         height = height,
         timestampMs = timestampMs,
+        timestampUs = timestampUs,
     )
 
     fun registerOwnerFromFrame(
@@ -36,8 +57,22 @@ class CameraAnalysisUseCase @Inject constructor(
         processedFrame = processedFrame,
     )
 
+    fun removeOwner(
+        ownerId: Int,
+        trackId: Int,
+        thumbnailPath: String? = null,
+    ): Boolean = cameraAnalysisRepository.removeOwner(
+        ownerId = ownerId,
+        trackId = trackId,
+        thumbnailPath = thumbnailPath,
+    )
+
     fun clearProcessingThreadCache() {
         cameraAnalysisRepository.clearProcessingThreadCache()
+    }
+
+    fun resetSessionState() {
+        cameraAnalysisRepository.resetSessionState()
     }
 
     fun startMetadataSession() {

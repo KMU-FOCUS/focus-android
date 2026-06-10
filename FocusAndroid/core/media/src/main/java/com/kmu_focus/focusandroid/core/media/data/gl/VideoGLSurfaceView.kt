@@ -4,12 +4,14 @@ import android.content.Context
 import android.opengl.GLSurfaceView
 import android.util.Log
 import android.view.Surface
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
 import java.nio.ByteBuffer
 
 class VideoGLSurfaceView(
     context: Context,
-    private val onFrameCaptured: (ByteBuffer, Int, Int) -> ProcessedFrame,
+    /** (buffer, width, height, frameTimestampNs(녹화 중에는 encoder 제출 timestamp)) -> ProcessedFrame */
+    private val onFrameCaptured: (ByteBuffer, Int, Int, Long) -> ProcessedFrame,
     private val onSurfaceReady: (Surface) -> Unit,
     private val onRendererReleased: (() -> Unit)? = null,
 ) : GLSurfaceView(context) {
@@ -56,6 +58,12 @@ class VideoGLSurfaceView(
         }
     }
 
+    fun setPrivacyMode(mode: PrivacyMode) {
+        queueEvent {
+            renderer.setPrivacyMode(mode)
+        }
+    }
+
     /** 인코더 입력 Surface 설정 (녹화용). 메인 스레드에서 호출 가능 (내부적으로 queueEvent 처리). */
     fun setEncoderSurface(
         surface: Surface?,
@@ -66,6 +74,16 @@ class VideoGLSurfaceView(
         queueEvent {
             Log.w(TAG, "setEncoderSurface runOnGlThread: surfaceNull=${surface == null}, size=${width}x$height")
             renderer.setEncoderSurface(surface, width, height)
+        }
+    }
+
+    fun setOriginalClipEncoderSurface(
+        surface: Surface?,
+        width: Int = 0,
+        height: Int = 0,
+    ) {
+        queueEvent {
+            renderer.setOriginalClipEncoderSurface(surface, width, height)
         }
     }
 

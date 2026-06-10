@@ -10,4 +10,10 @@ data class BroadcastResponseDto(
     val memberId: String,
     val startedAt: String?,
     val endedAt: String?,
+    val liveStatus: String? = null,
+    val platform: String? = null,
+    val outputMode: String? = null,
+    val platformChannelId: String? = null,
+    val watchUrl: String? = null,
+    val lastStartFailureReason: String? = null,
 )

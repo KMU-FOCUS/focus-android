@@ -3,12 +3,17 @@ package com.kmu_focus.focusandroid.feature.broadcast.data.repository
 import com.kmu_focus.focusandroid.core.network.dto.ApiResponse
 import com.kmu_focus.focusandroid.feature.broadcast.data.mapper.toEntity
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.BroadcastApi
+import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastAnalysisResultResponseDto
+import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastHighlightCandidateResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CreateBroadcastRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.PageBroadcastResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.StartBroadcastRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.UpdateBroadcastRequestDto
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastAnalysisResult
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastHighlightCandidate
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.Broadcast
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.repository.BroadcastRepository
 import javax.inject.Inject
 import retrofit2.Response
@@ -17,11 +22,17 @@ class BroadcastRepositoryImpl @Inject constructor(
     private val broadcastApi: BroadcastApi,
 ) : BroadcastRepository {
 
-    override suspend fun createBroadcast(title: String): Result<Broadcast> {
+    override suspend fun createBroadcast(
+        title: String,
+        outputMode: BroadcastOutputMode,
+    ): Result<Broadcast> {
         return execute(
             apiCall = {
                 broadcastApi.createBroadcast(
-                    CreateBroadcastRequestDto(title = title),
+                    CreateBroadcastRequestDto(
+                        title = title,
+                        outputMode = outputMode.apiValue,
+                    ),
                 )
             },
             successMapper = BroadcastResponseDto::toEntity,
@@ -30,10 +41,12 @@ class BroadcastRepositoryImpl @Inject constructor(
         )
     }
 
-    override suspend fun startBroadcast(
-        broadcastId: String,
-        avatarId: String,
-    ): Result<Broadcast> {
+    override suspend fun startBroadcast(broadcastId: String): Result<Broadcast> {
+        val avatarId = getAvailableAvatarIds()
+            .getOrElse { throwable -> return Result.failure(throwable) }
+            .firstOrNull()
+            ?: return Result.failure(IllegalStateException("사용 가능한 아바타가 없습니다"))
+
         return execute(
             apiCall = {
                 broadcastApi.startBroadcast(
@@ -105,6 +118,33 @@ class BroadcastRepositoryImpl @Inject constructor(
         return executeUnit(
             apiCall = { broadcastApi.streamerHeartbeat(broadcastId) },
             failureMessage = "스트리머 하트비트 전송 실패",
+        )
+    }
+
+    override suspend fun getLatestAnalysis(broadcastId: String): Result<BroadcastAnalysisResult> {
+        return execute(
+            apiCall = { broadcastApi.getLatestAnalysis(broadcastId) },
+            successMapper = BroadcastAnalysisResultResponseDto::toEntity,
+            emptyDataMessage = "최신 분석 결과가 비어 있습니다",
+            failureMessage = "최신 분석 결과 조회 실패",
+        )
+    }
+
+    override suspend fun getHighlights(broadcastId: String): Result<List<BroadcastHighlightCandidate>> {
+        return execute(
+            apiCall = { broadcastApi.getHighlights(broadcastId) },
+            successMapper = { items -> items.map(BroadcastHighlightCandidateResponseDto::toEntity) },
+            emptyDataMessage = "하이라이트 응답이 비어 있습니다",
+            failureMessage = "하이라이트 조회 실패",
+        )
+    }
+
+    private suspend fun getAvailableAvatarIds(): Result<List<String>> {
+        return execute(
+            apiCall = { broadcastApi.getAvatarIds() },
+            successMapper = { it },
+            emptyDataMessage = "아바타 목록 응답이 비어 있습니다",
+            failureMessage = "사용 가능한 아바타 조회 실패",
         )
     }
 

@@ -8,6 +8,14 @@ import javax.inject.Inject
 class PlaybackAnalysisUseCase @Inject constructor(
     private val playbackAnalysisRepository: PlaybackAnalysisRepository,
 ) {
+    fun updateSourceVideoSize(
+        width: Int,
+        height: Int,
+    ) = playbackAnalysisRepository.updateSourceVideoSize(width, height)
+
+    fun markTrackAsOwner(trackId: Int) =
+        playbackAnalysisRepository.markTrackAsOwner(trackId)
+
     fun processFrame(
         buffer: ByteBuffer,
         width: Int,

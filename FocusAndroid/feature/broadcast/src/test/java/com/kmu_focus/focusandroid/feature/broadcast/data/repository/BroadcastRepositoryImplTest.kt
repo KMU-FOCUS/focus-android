@@ -7,8 +7,10 @@ import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CreateBroadc
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.PageBroadcastResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.StartBroadcastRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.UpdateBroadcastRequestDto
+import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastOutputMode
 import com.kmu_focus.focusandroid.feature.broadcast.domain.entity.BroadcastStatus
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -54,6 +56,14 @@ class BroadcastRepositoryImplTest {
         assertEquals("broadcast-1", broadcast.broadcastId)
         assertEquals(BroadcastStatus.READY, broadcast.status)
         assertEquals("stream-key-abc", broadcast.streamKey)
+        coVerify(exactly = 1) {
+            api.createBroadcast(
+                CreateBroadcastRequestDto(
+                    title = "테스트 방송",
+                    outputMode = BroadcastOutputMode.CHZZK_RTMP.apiValue,
+                ),
+            )
+        }
     }
 
     @Test
@@ -73,16 +83,40 @@ class BroadcastRepositoryImplTest {
             status = "ON_AIR",
             hlsUrl = "https://cdn.example.com/live/broadcast-1.m3u8",
             startedAt = "2026-04-09T12:00:00",
+            liveStatus = "ON_AIR",
+            watchUrl = "https://chzzk.naver.com/live/broadcast-1",
+        )
+        coEvery { api.getAvatarIds() } returns Response.success(
+            ApiResponse(success = true, message = "성공", data = listOf("avatar-a", "avatar-b")),
         )
         coEvery { api.startBroadcast(any(), any()) } returns Response.success(
             ApiResponse(success = true, message = "성공", data = onAirDto),
         )
 
-        val result = repository.startBroadcast("broadcast-1", "avatar-a")
+        val result = repository.startBroadcast("broadcast-1")
 
         assertTrue(result.isSuccess)
         assertEquals(BroadcastStatus.ON_AIR, result.getOrThrow().status)
+        assertEquals(BroadcastStatus.ON_AIR, result.getOrThrow().liveStatus)
         assertEquals("https://cdn.example.com/live/broadcast-1.m3u8", result.getOrThrow().hlsUrl)
+        assertEquals("https://chzzk.naver.com/live/broadcast-1", result.getOrThrow().watchUrl)
+        coVerify(exactly = 1) { api.getAvatarIds() }
+        coVerify(exactly = 1) {
+            api.startBroadcast("broadcast-1", StartBroadcastRequestDto(avatarId = "avatar-a"))
+        }
+    }
+
+    @Test
+    fun `startBroadcast 시 사용 가능한 아바타가 없으면 failure를 반환한다`() = runTest {
+        coEvery { api.getAvatarIds() } returns Response.success(
+            ApiResponse(success = true, message = "성공", data = emptyList()),
+        )
+
+        val result = repository.startBroadcast("broadcast-1")
+
+        assertTrue(result.isFailure)
+        assertEquals("사용 가능한 아바타가 없습니다", result.exceptionOrNull()?.message)
+        coVerify(exactly = 0) { api.startBroadcast(any(), any()) }
     }
 
     @Test

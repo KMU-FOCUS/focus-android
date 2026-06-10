@@ -6,6 +6,9 @@ import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.util.Log
 import android.view.Surface
+import com.kmu_focus.focusandroid.core.media.api.recorder.EncoderSurfaceHandle
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxer
+import com.kmu_focus.focusandroid.core.media.api.recorder.VideoMuxerFactory
 import com.kmu_focus.focusandroid.core.media.domain.usecase.CalculateEncoderBitrateUseCase
 import java.io.File
 import java.nio.ByteBuffer
@@ -72,16 +75,35 @@ class RealTimeRecorder(
     private var videoPtsBaseUs: Long = Long.MIN_VALUE
 
     /**
+     * 인코더 출력 첫 비디오 sample이 결정될 때(=SRT/MP4 muxer가 사용할 PTS base가 확정될 때) 호출.
+     * metadata 파이프라인이 동일한 base로 pts_us를 rebase 하기 위해 사용.
+     * 단위: microseconds. SurfaceTexture nanoTime / 1000 기준.
+     */
+    @Volatile
+    var onVideoPtsBaseSet: ((baseUs: Long) -> Unit)? = null
+
+    /**
+     * 비디오 sample이 muxer/SRT로 실제 기록된 뒤 호출.
+     * metadata는 이 콜백의 rebased PTS만 사용해야 영상에 없는 frame metadata가 전송되지 않는다.
+     *
+     * @param rawPtsUs encoder output 원본 PTS. SurfaceTexture timestamp / 1000 기준.
+     * @param rebasedPtsUs muxer에 기록된 0-based PTS.
+     */
+    @Volatile
+    var onVideoSampleWritten: ((rawPtsUs: Long, rebasedPtsUs: Long) -> Unit)? = null
+
+    /**
      * 비디오 인코더 + Muxer를 초기화하고, 인코더 입력 Surface를 콜백으로 전달한다.
      *
      * @param width 인코딩 해상도 (픽셀)
      * @param height 인코딩 해상도 (픽셀)
      * @param bitRate 원본 비트레이트 (bps). null이면 해상도 기반 기본값 계산
      * @param frameRate 목표 프레임레이트 (fps)
+     * @param iFrameIntervalSec 키프레임 간격 (초). null이면 기본값 사용
      * @param outputFile 출력 MP4 파일
      * @param audioTrackSource 원본 오디오 sample 공급자 (nullable)
      * @param audioStartPositionUs 오디오 seek 시작 위치 (us)
-     * @param onInputSurfaceReady GLSurfaceView에서 사용할 인코더 입력 Surface 콜백
+     * @param onInputSurfaceReady GLSurfaceView에서 사용할 인코더 입력 surface handle 콜백
      */
     @Synchronized
     fun start(
@@ -90,9 +112,10 @@ class RealTimeRecorder(
         outputFile: File,
         bitRate: Int? = null,
         frameRate: Int = DEFAULT_FRAME_RATE,
+        iFrameIntervalSec: Int? = null,
         audioTrackSource: AudioTrackSource? = null,
         audioStartPositionUs: Long = 0L,
-        onInputSurfaceReady: (Surface) -> Unit,
+        onInputSurfaceReady: (EncoderSurfaceHandle) -> Unit,
         muxerFactory: VideoMuxerFactory = this.muxerFactory,
     ) {
         check(!isRecording) { "이미 녹화 중입니다" }
@@ -103,12 +126,15 @@ class RealTimeRecorder(
             frameRate = frameRate,
             sourceBitrate = bitRate,
         )
+        val resolvedIFrameIntervalSec = iFrameIntervalSec
+            ?.coerceAtLeast(MIN_I_FRAME_INTERVAL_SEC)
+            ?: encoderConfig.iFrameIntervalSec
         val encoder = encoderFactory.create(
             width = width,
             height = height,
             bitRate = encoderConfig.bitrate,
             frameRate = encoderConfig.frameRate,
-            iFrameIntervalSec = encoderConfig.iFrameIntervalSec,
+            iFrameIntervalSec = resolvedIFrameIntervalSec,
         )
         val muxer = muxerFactory.create(outputFile)
 
@@ -150,7 +176,7 @@ class RealTimeRecorder(
             drainThread = thread
         }
 
-        onInputSurfaceReady(surface)
+        onInputSurfaceReady(EncoderSurfaceHandle(surface))
     }
 
     /**
@@ -243,14 +269,19 @@ class RealTimeRecorder(
                         }
 
                         if (bufferInfo.size > 0 && muxerStarted && videoTrackIndex >= 0) {
+                            val rawVideoPtsUs = bufferInfo.presentationTimeUs
                             if (videoPtsBaseUs == Long.MIN_VALUE) {
-                                videoPtsBaseUs = bufferInfo.presentationTimeUs
+                                videoPtsBaseUs = rawVideoPtsUs
+                                runCatching { onVideoPtsBaseSet?.invoke(videoPtsBaseUs) }
+                                    .onFailure { Log.w(loggerTag, "onVideoPtsBaseSet 콜백 실패", it) }
                             }
-                            val rebasedVideoPtsUs = (bufferInfo.presentationTimeUs - videoPtsBaseUs).coerceAtLeast(0L)
+                            val rebasedVideoPtsUs = (rawVideoPtsUs - videoPtsBaseUs).coerceAtLeast(0L)
                             encodedData.position(bufferInfo.offset)
                             encodedData.limit(bufferInfo.offset + bufferInfo.size)
                             bufferInfo.presentationTimeUs = rebasedVideoPtsUs
                             muxer.writeSampleData(videoTrackIndex, encodedData, bufferInfo)
+                            runCatching { onVideoSampleWritten?.invoke(rawVideoPtsUs, rebasedVideoPtsUs) }
+                                .onFailure { Log.w(loggerTag, "onVideoSampleWritten 콜백 실패", it) }
                             currentRecordingSampleCount++
                             lastVideoPtsUs = rebasedVideoPtsUs
                             drainAudioSamplesUpTo(rebasedVideoPtsUs)
@@ -428,18 +459,6 @@ class RealTimeRecorder(
         ): VideoEncoder
     }
 
-    interface VideoMuxer {
-        fun addTrack(format: MediaFormat): Int
-        fun start()
-        fun writeSampleData(trackIndex: Int, byteBuf: ByteBuffer, info: MediaCodec.BufferInfo)
-        fun stopAndRelease()
-        fun releaseQuietly()
-    }
-
-    fun interface VideoMuxerFactory {
-        fun create(outputFile: File): VideoMuxer
-    }
-
     private class DefaultVideoEncoderFactory : VideoEncoderFactory {
         override fun create(
             width: Int,
@@ -501,16 +520,16 @@ class RealTimeRecorder(
             frameRate: Int,
             iFrameIntervalSec: Int,
         ): MediaCodec {
-            val configuredWithVbr = tryConfigureCodec(
+            val configuredWithCbr = tryConfigureCodec(
                 width = width,
                 height = height,
                 bitRate = bitRate,
                 frameRate = frameRate,
                 iFrameIntervalSec = iFrameIntervalSec,
-                allowVbr = true,
+                preferredBitrateMode = MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR,
             )
-            if (configuredWithVbr != null) {
-                return configuredWithVbr
+            if (configuredWithCbr != null) {
+                return configuredWithCbr
             }
             return tryConfigureCodec(
                 width = width,
@@ -518,7 +537,7 @@ class RealTimeRecorder(
                 bitRate = bitRate,
                 frameRate = frameRate,
                 iFrameIntervalSec = iFrameIntervalSec,
-                allowVbr = false,
+                preferredBitrateMode = null,
             ) ?: error("codec configure retry returned null")
         }
 
@@ -528,21 +547,23 @@ class RealTimeRecorder(
             bitRate: Int,
             frameRate: Int,
             iFrameIntervalSec: Int,
-            allowVbr: Boolean,
+            preferredBitrateMode: Int?,
         ): MediaCodec? {
             val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            val useVbr = allowVbr && supportsBitrateMode(
-                codec = codec,
-                mimeType = MediaFormat.MIMETYPE_VIDEO_AVC,
-                bitrateMode = MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR,
-            )
+            val bitrateMode = preferredBitrateMode?.takeIf { mode ->
+                supportsBitrateMode(
+                    codec = codec,
+                    mimeType = MediaFormat.MIMETYPE_VIDEO_AVC,
+                    bitrateMode = mode,
+                )
+            }
             val format = createVideoFormat(
                 width = width,
                 height = height,
                 bitRate = bitRate,
                 frameRate = frameRate,
                 iFrameIntervalSec = iFrameIntervalSec,
-                useVbr = useVbr,
+                bitrateMode = bitrateMode,
             )
 
             return try {
@@ -550,8 +571,8 @@ class RealTimeRecorder(
                 codec
             } catch (error: Exception) {
                 codec.release()
-                if (useVbr) {
-                    Log.w("RealTimeRecorder", "VBR configure 실패, 기본 bitrate mode로 재시도합니다.", error)
+                if (bitrateMode != null) {
+                    Log.w("RealTimeRecorder", "CBR configure 실패, 기본 bitrate mode로 재시도합니다.", error)
                     null
                 } else {
                     throw error
@@ -578,18 +599,15 @@ class RealTimeRecorder(
             bitRate: Int,
             frameRate: Int,
             iFrameIntervalSec: Int,
-            useVbr: Boolean,
+            bitrateMode: Int?,
         ): MediaFormat {
             return MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, bitRate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, frameRate)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameIntervalSec)
-                if (useVbr) {
-                    setInteger(
-                        MediaFormat.KEY_BITRATE_MODE,
-                        MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR,
-                    )
+                if (bitrateMode != null) {
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, bitrateMode)
                 }
             }
         }
@@ -636,6 +654,7 @@ class RealTimeRecorder(
 
     companion object {
         private const val DEFAULT_FRAME_RATE = 30
+        private const val MIN_I_FRAME_INTERVAL_SEC = 1
         private const val DEQUEUE_TIMEOUT_US = 10_000L
         private const val DRAIN_JOIN_TIMEOUT_MS = 2_000L
         private const val MAX_TRY_AGAIN_AFTER_STOP = 240

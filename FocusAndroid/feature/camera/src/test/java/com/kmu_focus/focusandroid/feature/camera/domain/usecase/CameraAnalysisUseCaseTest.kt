@@ -3,6 +3,7 @@ package com.kmu_focus.focusandroid.feature.camera.domain.usecase
 import com.kmu_focus.focusandroid.core.ai.domain.entity.DetectedFace
 import com.kmu_focus.focusandroid.feature.camera.domain.repository.CameraAnalysisRepository
 import com.kmu_focus.focusandroid.core.media.domain.entity.ProcessedFrame
+import com.kmu_focus.focusandroid.core.media.domain.entity.PrivacyMode
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -34,12 +35,12 @@ class CameraAnalysisUseCaseTest {
     fun `processFrame 호출 시 repository에 위임됨`() {
         val buffer = createTestBuffer()
         val expected = ProcessedFrame(emptyList(), 640, 480, 1000L)
-        every { repository.processFrame(buffer, 640, 480, 1000L) } returns expected
+        every { repository.processFrame(buffer, 640, 480, 1000L, 1_000_000L) } returns expected
 
         val result = useCase.processFrame(buffer, 640, 480, 1000L)
 
         assertEquals(expected, result)
-        verify(exactly = 1) { repository.processFrame(buffer, 640, 480, 1000L) }
+        verify(exactly = 1) { repository.processFrame(buffer, 640, 480, 1000L, 1_000_000L) }
     }
 
     @Test
@@ -54,7 +55,7 @@ class CameraAnalysisUseCaseTest {
             trackingIds = listOf(1),
             faceLabels = listOf(false)
         )
-        every { repository.processFrame(buffer, 640, 480, 2000L) } returns expected
+        every { repository.processFrame(buffer, 640, 480, 2000L, 2_000_000L) } returns expected
 
         val result = useCase.processFrame(buffer, 640, 480, 2000L)
 
@@ -79,7 +80,7 @@ class CameraAnalysisUseCaseTest {
             trackingIds = listOf(1, 2),
             faceLabels = listOf(true, false)
         )
-        every { repository.processFrame(buffer, 640, 480, 3000L) } returns expected
+        every { repository.processFrame(buffer, 640, 480, 3000L, 3_000_000L) } returns expected
 
         val result = useCase.processFrame(buffer, 640, 480, 3000L)
 
@@ -92,7 +93,7 @@ class CameraAnalysisUseCaseTest {
     fun `processFrame에서 빈 검출 결과가 올바르게 전달됨`() {
         val buffer = createTestBuffer()
         val expected = ProcessedFrame(emptyList(), 640, 480, 500L)
-        every { repository.processFrame(buffer, 640, 480, 500L) } returns expected
+        every { repository.processFrame(buffer, 640, 480, 500L, 500_000L) } returns expected
 
         val result = useCase.processFrame(buffer, 640, 480, 500L)
 
@@ -115,7 +116,7 @@ class CameraAnalysisUseCaseTest {
             trackingIds = listOf(1, 2),
             faceLabels = listOf(null, null)
         )
-        every { repository.processFrame(buffer, 640, 480, 1000L) } returns expected
+        every { repository.processFrame(buffer, 640, 480, 1000L, 1_000_000L) } returns expected
 
         val result = useCase.processFrame(buffer, 640, 480, 1000L)
 
@@ -129,5 +130,19 @@ class CameraAnalysisUseCaseTest {
         useCase.clearProcessingThreadCache()
 
         verify(exactly = 1) { repository.clearProcessingThreadCache() }
+    }
+
+    @Test
+    fun `resetSessionState 호출 시 repository에 위임됨`() {
+        useCase.resetSessionState()
+
+        verify(exactly = 1) { repository.resetSessionState() }
+    }
+
+    @Test
+    fun `setPrivacyMode 호출 시 repository에 위임됨`() {
+        useCase.setPrivacyMode(PrivacyMode.Mosaic)
+
+        verify(exactly = 1) { repository.setPrivacyMode(PrivacyMode.Mosaic) }
     }
 }

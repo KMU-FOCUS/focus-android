@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import com.kmu_focus.focusandroid.core.media.data.gl.VideoGLSurfaceView
@@ -76,6 +78,20 @@ fun VideoPlayerScreen(
         viewModel.loadVideo(videoUri)
     }
 
+    DisposableEffect(exoPlayer, viewModel) {
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    viewModel.updateSourceVideoSize(videoSize.width, videoSize.height)
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+        }
+    }
+
     LaunchedEffect(uiState.lastRegisteredOwnerImageUri) {
         if (uiState.lastRegisteredOwnerImageUri == null) return@LaunchedEffect
         Toast.makeText(context, "등록 얼굴 이미지를 임시 저장했습니다.", Toast.LENGTH_SHORT).show()
@@ -100,8 +116,12 @@ fun VideoPlayerScreen(
         Box(modifier = videoBoxModifier) {
             ExoPlayerGLView(
                 exoPlayer = exoPlayer,
-                onFrameCaptured = { buffer, width, height ->
-                    viewModel.processFrameSync(buffer, width, height)
+                onFrameCaptured = { buffer, width, height, _ ->
+                    viewModel.processFrameSync(
+                        buffer = buffer,
+                        width = width,
+                        height = height,
+                    )
                 },
                 onRendererReleased = {
                     viewModel.clearProcessingThreadCache()
@@ -236,7 +256,7 @@ fun VideoPlayerScreen(
 @Composable
 private fun ExoPlayerGLView(
     exoPlayer: ExoPlayer,
-    onFrameCaptured: (java.nio.ByteBuffer, Int, Int) -> ProcessedFrame,
+    onFrameCaptured: (java.nio.ByteBuffer, Int, Int, Long) -> ProcessedFrame,
     onRendererReleased: (() -> Unit)? = null,
     videoWidth: Int = 0,
     videoHeight: Int = 0,

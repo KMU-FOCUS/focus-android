@@ -166,8 +166,12 @@ fun CameraScreen(
         viewModel.setEncoderSurfaceDispatcher { surface, width, height ->
             glViewRef?.setEncoderSurface(surface, width, height)
         }
+        viewModel.setOriginalClipSurfaceDispatcher { surface, width, height ->
+            glViewRef?.setOriginalClipEncoderSurface(surface, width, height)
+        }
         onDispose {
             viewModel.setEncoderSurfaceDispatcher(null)
+            viewModel.setOriginalClipSurfaceDispatcher(null)
         }
     }
 
@@ -175,6 +179,10 @@ fun CameraScreen(
         val outputFile = uiState.recordingFile ?: return@LaunchedEffect
         onRecordingComplete(outputFile)
         viewModel.clearRecordingFile()
+    }
+
+    LaunchedEffect(uiState.privacyMode, glViewRef) {
+        glViewRef?.setPrivacyMode(uiState.privacyMode)
     }
 
     if (!hasAllPermissions) {
@@ -211,8 +219,8 @@ fun CameraScreen(
                 CameraGLView(
                     lensFacing = uiState.lensFacing,
                     isPortraitUi = isPortraitUi,
-                    onFrameCaptured = { buffer, width, height ->
-                        viewModel.processFrameSync(buffer, width, height)
+                    onFrameCaptured = { buffer, width, height, frameTimestampNs ->
+                        viewModel.processFrameSync(buffer, width, height, frameTimestampNs)
                     },
                     onRendererReleased = { viewModel.clearProcessingThreadCache() },
                     onGlSurfaceViewChanged = { glViewRef = it },
@@ -418,7 +426,7 @@ private fun PermissionRequiredScreen(
 private fun CameraGLView(
     lensFacing: LensFacing,
     isPortraitUi: Boolean,
-    onFrameCaptured: (ByteBuffer, Int, Int) -> ProcessedFrame?,
+    onFrameCaptured: (ByteBuffer, Int, Int, Long) -> ProcessedFrame?,
     onRendererReleased: () -> Unit,
     onGlSurfaceViewChanged: (VideoGLSurfaceView?) -> Unit,
     onPreviewResolutionChanged: (Int, Int) -> Unit = { _, _ -> },
@@ -511,12 +519,12 @@ private fun CameraGLView(
         factory = { ctx ->
             VideoGLSurfaceView(
                 context = ctx,
-                onFrameCaptured = { buffer, width, height ->
-                    onFrameCaptured(buffer, width, height) ?: ProcessedFrame(
+                onFrameCaptured = { buffer, width, height, frameTimestampNs ->
+                    onFrameCaptured(buffer, width, height, frameTimestampNs) ?: ProcessedFrame(
                         faces = emptyList(),
                         frameWidth = width,
                         frameHeight = height,
-                        timestampMs = System.currentTimeMillis(),
+                        timestampMs = frameTimestampNs / 1_000_000L,
                     )
                 },
                 onSurfaceReady = { surface ->
@@ -530,6 +538,7 @@ private fun CameraGLView(
         },
         onRelease = { releasedView ->
             (releasedView as? VideoGLSurfaceView)?.setEncoderSurface(null, 0, 0)
+            (releasedView as? VideoGLSurfaceView)?.setOriginalClipEncoderSurface(null, 0, 0)
             onGlSurfaceViewChanged(null)
             glSurfaceView = null
             previewSurface = null

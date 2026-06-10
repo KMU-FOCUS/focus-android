@@ -1,6 +1,8 @@
 package com.kmu_focus.focusandroid.feature.broadcast.data.remote
 
 import com.kmu_focus.focusandroid.core.network.dto.ApiResponse
+import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastAnalysisResultResponseDto
+import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastHighlightCandidateResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.BroadcastResponseDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.CreateBroadcastRequestDto
 import com.kmu_focus.focusandroid.feature.broadcast.data.remote.dto.PageBroadcastResponseDto
@@ -20,6 +22,9 @@ interface BroadcastApi {
     suspend fun createBroadcast(
         @Body request: CreateBroadcastRequestDto,
     ): Response<ApiResponse<BroadcastResponseDto>>
+
+    @GET("/api/v1/avatars")
+    suspend fun getAvatarIds(): Response<ApiResponse<List<String>>>
 
     @POST("/api/v1/broadcasts/{broadcastId}/start")
     suspend fun startBroadcast(
@@ -63,4 +68,14 @@ interface BroadcastApi {
     suspend fun viewerHeartbeat(
         @Path("broadcastId") broadcastId: String,
     ): Response<ApiResponse<Unit>>
+
+    @GET("/api/v1/broadcasts/{broadcastId}/analysis")
+    suspend fun getLatestAnalysis(
+        @Path("broadcastId") broadcastId: String,
+    ): Response<ApiResponse<BroadcastAnalysisResultResponseDto>>
+
+    @GET("/api/v1/broadcasts/{broadcastId}/highlights")
+    suspend fun getHighlights(
+        @Path("broadcastId") broadcastId: String,
+    ): Response<ApiResponse<List<BroadcastHighlightCandidateResponseDto>>>
 }

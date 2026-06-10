@@ -94,13 +94,23 @@ class VideoPlayerViewModel @Inject constructor(
 
     fun loadVideo(uri: String) {
         stopDetection()
+        playbackAnalysisUseCase.updateSourceVideoSize(0, 0)
         _uiState.value = VideoPlayerUiState(videoUri = uri, isPlaying = false)
         viewModelScope.launch(ioDispatcher) {
             val dims = playbackAnalysisUseCase.getVideoDimensions(uri)
             if (dims != null) {
-                _uiState.value = _uiState.value.copy(videoWidth = dims.first, videoHeight = dims.second)
+                updateSourceVideoSize(dims.first, dims.second)
             }
         }
+    }
+
+    fun updateSourceVideoSize(
+        width: Int,
+        height: Int,
+    ) {
+        if (width <= 0 || height <= 0) return
+        playbackAnalysisUseCase.updateSourceVideoSize(width, height)
+        _uiState.value = _uiState.value.copy(videoWidth = width, videoHeight = height)
     }
 
     fun togglePlayback() {
@@ -166,6 +176,7 @@ class VideoPlayerViewModel @Inject constructor(
 
         val snapshot = lastGLResult?.let { normalizeTrackingIds(it) }
         val resolvedTrackId = resolveTrackIdForTap(snapshot, trackId, fallbackFaceIndex)
+        playbackAnalysisUseCase.markTrackAsOwner(resolvedTrackId)
         applyOwnerLabelImmediately(resolvedTrackId, fallbackFaceIndex = fallbackFaceIndex)
         if (snapshot != null) {
             saveFaceSnapshotForTrack(
@@ -199,7 +210,7 @@ class VideoPlayerViewModel @Inject constructor(
             sourceUri = sourceUri,
             audioStartPositionMs = startPositionMs,
             onSurfaceReady = { encoderSurface, width, height ->
-                currentEncoderSurface = encoderSurface as? Surface
+                currentEncoderSurface = encoderSurface.surface
                 currentEncoderWidth = width
                 currentEncoderHeight = height
                 Log.w(TAG, "onInputSurfaceReady: dispatcherNull=${encoderSurfaceDispatcher == null}, size=${width}x$height")
@@ -310,17 +321,34 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
-    fun processFrameSync(buffer: ByteBuffer, width: Int, height: Int): ProcessedFrame {
+    fun processFrameSync(
+        buffer: ByteBuffer,
+        width: Int,
+        height: Int,
+        playbackPositionMs: Long = latestPositionMs.coerceAtLeast(0L),
+    ): ProcessedFrame {
+        val effectivePlaybackPositionMs = playbackPositionMs.coerceAtLeast(0L)
+        latestPositionMs = effectivePlaybackPositionMs
         val empty = ProcessedFrame(
             faces = emptyList(),
             frameWidth = width,
             frameHeight = height,
-            timestampMs = System.currentTimeMillis(),
+            timestampMs = effectivePlaybackPositionMs,
         )
         if (!_uiState.value.isDetecting) return empty
+        val state = _uiState.value
+        if (state.videoWidth > 0 && state.videoHeight > 0) {
+            playbackAnalysisUseCase.updateSourceVideoSize(state.videoWidth, state.videoHeight)
+        }
         val idx = frameIndexCounter++
         val result = normalizeTrackingIds(
-            playbackAnalysisUseCase.processFrame(buffer, width, height, System.currentTimeMillis(), idx)
+            playbackAnalysisUseCase.processFrame(
+                buffer = buffer,
+                width = width,
+                height = height,
+                timestampMs = effectivePlaybackPositionMs,
+                frameIndex = idx,
+            )
         )
         lastGLResult = result
         val mergedLabels = result.faces.indices.map { index ->
