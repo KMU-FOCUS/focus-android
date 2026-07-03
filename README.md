@@ -6,7 +6,7 @@
 
 FOCUS Android는 IRL 라이브 방송 중 스트리머 본인은 원본으로 유지하고, 송출 영상에 등장한 제3자의 얼굴은 실시간으로 보호 처리하는 Android 앱입니다. CameraX 기반 카메라 입력, 온디바이스 얼굴 탐지와 Owner/Other 분류, OpenGL 보호 렌더링, H.264 인코딩, SRT 송출, gRPC 메타데이터 전송을 하나의 모바일 방송 흐름으로 연결했습니다.
 
-이 저장소는 FOCUS 팀 프로젝트 중 제가 단독으로 담당한 Android 앱과 Vision 파이프라인에 해당합니다. 전체 FOCUS 시스템은 Android/iOS 클라이언트, Spring Boot 백엔드, FastAPI 아바타 합성 서버, HLS/치지직/유튜브 송출 경로로 구성되며, iOS, 백엔드, 아바타 합성 서버는 다른 팀원이 담당했습니다.
+이 저장소는 FOCUS 팀 프로젝트에서 제가 담당한 Android 앱과 모바일 온디바이스 Vision/Media 파이프라인입니다. README는 이 저장소 안에서 확인할 수 있는 Android 구현, 검증 지표, 대표 코드 중심으로 정리했습니다.
 
 ## Portfolio Summary
 
@@ -14,9 +14,9 @@ FOCUS Android는 IRL 라이브 방송 중 스트리머 본인은 원본으로 �
 | --- | --- |
 | 문제 | IRL 라이브 방송에서 주변 인물의 얼굴이 의도치 않게 실시간 노출되는 문제 |
 | 해결 | 스트리머는 원본으로 유지하고, 제3자 얼굴만 실시간 보호 처리하는 선택적 익명화 앱 구현 |
-| 내 기여 | 이 저장소의 Android 구현 전반, 실시간 카메라/렌더링/인코딩/송출 파이프라인, Vision 통합, 서버 연동, 최종 기능 통합 |
-| 대표 성과 | KMU-EXPO 우수상, 최종 시연 기준 외부 플랫폼 종단 지연 5초 이내 목표 달성, 보호 성공률 97% |
-| 기술 포인트 | CameraX, OpenGL ES, MediaCodec, YuNet, ArcFace, 3DMM, SRT, gRPC, Multi-module Architecture |
+| 내 기여 | 이 저장소의 Android 구현 전반, 모바일 온디바이스 모델 처리, 실시간 카메라/렌더링/인코딩/송출 파이프라인, Vision 통합, 서버 연동, 최종 기능 통합 |
+| 대표 성과 | KMU-EXPO 우수상, Galaxy S25 기준 모바일 분석·보호 처리 평균 40ms, 보호 성공률 97%, 약 7시간 연속 방송, 77개 테스트 파일과 504개 `@Test` |
+| 기술 포인트 | CameraX, OpenGL ES, MediaCodec, YuNet, ArcFace, 3DMM, SRT, gRPC, Jetpack Compose, Coroutines/Flow/StateFlow, Multi-module Architecture |
 
 ## Award
 
@@ -90,9 +90,8 @@ flowchart TD
 | 항목 | 내용 |
 | --- | --- |
 | 이름 | 이지상 |
-| 역할 | 팀장, Android 파트 단독 개발, Android 실시간 미디어/Vision 개발, 외부 송출 방향 관리, 전체 기능 통합 |
+| 역할 | 팀장, Android 실시간 미디어/Vision 개발, 외부 송출 방향 관리, 전체 기능 통합 |
 | 담당 범위 | 이 저장소의 Android 구현 전반, Android 미디어/Vision 모듈 구조 설계, 실시간 카메라/렌더링/녹화, 얼굴 탐지/트래킹/Owner 분류, SRT/gRPC 연동, 방송 생성/시작/종료 서버 API 연동 및 상태 흐름 통합 |
-| 비담당 범위 | UI/UX 디자인, iOS 클라이언트, 백엔드, 아바타 합성 서버 구현 |
 | 검증 결과 | 모바일 앱, Vision/AI, Streaming 주요 시나리오 검증 완료. 외부 플랫폼 송출 기준 종단 지연 5초 이내 목표 달성 |
 
 ## Key Results
@@ -275,7 +274,7 @@ FocusAndroid/
 
 ## Android Tech Stack
 
-아래 기술 스택은 이 Android 저장소 기준입니다. 이 저장소에서 확인할 수 있는 Android 구현은 제가 담당했으며, iOS, 백엔드, 아바타 합성 서버는 별도 저장소/파트에서 다른 팀원이 구현했습니다.
+아래 기술 스택은 이 Android 저장소에서 확인할 수 있는 구현 기준입니다.
 
 | 영역 | 사용 기술 |
 | --- | --- |
@@ -383,6 +382,6 @@ cd FocusAndroid
 
 - AI 모델 파일은 `core/ai/src/main/assets/`에 포함되어 있으며 약 18MB입니다.
 - 라이브 방송 입력 프로파일은 `feature/broadcast/src/main/java/com/kmu_focus/focusandroid/feature/broadcast/domain/config/BroadcastSrtInputProfile.kt`에 정의되어 있습니다.
-- 아바타 합성과 Gemini 기반 회고 리포트 생성은 Android 앱 내부가 아니라 FastAPI 서버 담당 기능입니다.
+- 서버 합성과 회고 리포트 기능은 Android의 SRT/gRPC 연동 계약을 통해 연결됩니다.
 - Galaxy S25 약 7시간 연속 방송 테스트에서 매 순간 최소 1명 이상의 얼굴이 있었고, 혼잡 구간에서는 10명 이상이 동시에 등장했습니다. 발열 외 주요 중단은 없었지만, 발열 완화와 배터리 소모 최적화는 후속 개선 과제입니다.
 - 저사양 단말과 이동 통신망 품질 변화에 따른 지연 변동은 추가 검증이 필요합니다.
